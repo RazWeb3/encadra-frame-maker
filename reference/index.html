@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encadra フレームメーカー（参照実装）</title>
+<!--
+  Encadra Frame Maker — reference implementation (standalone)
+  指示書（../README.md）の参照実装です。ブラウザでこのファイルをそのまま開けば動作します。
+  Space へ移植するときは、この実装の構成・データ形式・振る舞いを土台にしてください。
+  保存は localStorage を使います（Space では Space のストレージに置き換えること）。
+  MIT License — see ../LICENSE
+-->
+<style>
+  :root { color-scheme: light dark; --accent:#e8590c; --line:#8884; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; }
+  header { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size: 20px; margin: 4px 0; }
+  .ver { opacity:.7; font-size: 13px; }
+  button { cursor:pointer; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:transparent; color:inherit; }
+  button.active { background: var(--accent); color:#fff; border-color: transparent; }
+  input[type="text"], input[type="number"], select, textarea { padding:6px; border-radius:8px; border:1px solid var(--line); background:transparent; color:inherit; }
+  input[type="range"] { width: 140px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0; }
+  .layout { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+  .previewBox { position:relative; }
+  canvas#preview { max-width: min(92vw, 480px); height:auto; border:1px solid var(--line); border-radius:8px; }
+  .panel { border:1px solid var(--line); border-radius:12px; padding:10px; min-width:300px; flex:1; }
+  .layerItem { display:flex; gap:6px; align-items:center; padding:6px; border:1px solid var(--line); border-radius:8px; margin:4px 0; }
+  .layerItem.selected { outline:2px solid var(--accent); }
+  .layerItem .name { flex:1; }
+  .editor label { display:flex; gap:8px; align-items:center; margin:6px 0; font-size:14px; }
+  .gallery { display:flex; gap:10px; flex-wrap:wrap; }
+  .gItem { width:130px; border:1px solid var(--line); border-radius:8px; padding:6px; font-size:12px; }
+  .gItem img { width:100%; height:auto; display:block; border-radius:4px; }
+  .small { font-size:13px; opacity:.85; }
+  .ok { color:#2b8a3e; } .ng { color:#e03131; } .warn { color:#e8890c; }
+  textarea { width:100%; min-height:64px; }
+  .steps { font-size:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="appTitle">Encadra フレームメーカー</h1>
+  <span class="ver" id="sheetVersion"></span>
+  <span class="row" style="margin-left:auto">
+    <button id="langJa">日本語</button>
+    <button id="langEn">English</button>
+  </span>
+</header>
+
+<div class="steps" id="howto"></div>
+
+<div class="row">
+  <label id="themeLabel">テーマ</label>
+  <input type="text" id="theme" size="24" placeholder="travel / cat / birthday">
+  <span id="ratioLabel">比率</span>
+  <span id="ratioButtons"></span>
+</div>
+
+<div class="layout">
+  <div>
+    <div class="previewBox"><canvas id="preview" width="480" height="600"></canvas></div>
+    <div class="row" id="bgButtons"></div>
+    <div class="panel" style="min-width:0">
+      <div class="row"><strong id="verifyTitle">書き出し前検証</strong></div>
+      <div id="verifyResults" class="small"></div>
+      <div class="row">
+        <button id="exportOne"></button>
+        <button id="exportAll"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="row"><strong id="layersTitle">レイヤー</strong></div>
+    <div id="layerList"></div>
+    <div class="row" id="addLayerButtons"></div>
+    <div class="editor" id="layerEditor"></div>
+    <hr>
+    <div class="row"><strong id="requestTitle">Museへの依頼文</strong></div>
+    <textarea id="requestText" readonly></textarea>
+    <div class="row">
+      <button id="reqArt"></button>
+      <button id="reqMotif"></button>
+      <button id="reqCopy"></button>
+    </div>
+    <hr>
+    <div class="row">
+      <strong id="templateTitle">テンプレート</strong>
+      <input type="text" id="templateName" size="14">
+      <button id="templateSave"></button>
+    </div>
+    <div id="templateList"></div>
+  </div>
+</div>
+
+<h3 id="galleryTitle">フレームギャラリー</h3>
+<div class="gallery" id="gallery"></div>
+
+<p class="small" id="footerNote"></p>
+
+<script src="frame-engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
