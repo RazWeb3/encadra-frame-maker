@@ -34,7 +34,7 @@
 
 'use strict';
 
-const SHEET_VERSION = 'v0.11';
+const SHEET_VERSION = 'v0.12';
 const STORE_KEY = 'encadraFrameMaker.v1';
 const GALLERY_LIMIT = 60;
 
@@ -130,7 +130,7 @@ function normalizeState(s) {
     }
     if (l.type === 'motif') {
       const m = Object.assign(defaultMotif(), l);
-      if (m.pos === 'center') m.pos = 'bottom-center';
+      if (m.pos === 'center' || m.pos === 'mc') m.pos = 'bottom-center';
       if (typeof m.size === 'number' && typeof l.sizePct !== 'number') m.sizePct = m.size;
       return m;
     }
@@ -330,26 +330,34 @@ function downscaleDataURL(dataURL, maxSide = 2048) {
 
 /* ================= ダミー写真とアプリ内生成の絵 ================= */
 
-/* 合成確認用のダミー写真（描画で生成する。外部画像は使わない） */
+/* 合成確認用のダミー写真（描画で生成する。外部画像は使わない。
+   空・太陽・山並み・丘・手前の地面だけの、単純な風景にする） */
 function drawDummyScene(ctx, W, H) {
-  const sky = ctx.createLinearGradient(0, 0, 0, H * 0.7);
-  sky.addColorStop(0, '#a8d4ea'); sky.addColorStop(1, '#dceef7');
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H * 0.7);
-  ctx.fillStyle = '#8fc7e8';
-  ctx.beginPath(); ctx.arc(W * 0.78, H * 0.16, W * 0.055, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#7fb069';
+  const sky = ctx.createLinearGradient(0, 0, 0, H * 0.65);
+  sky.addColorStop(0, '#84c2e6'); sky.addColorStop(1, '#e9f4e4');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#f6cd67';
+  ctx.beginPath(); ctx.arc(W * 0.77, H * 0.17, W * 0.068, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#7d9cb5';
   ctx.beginPath();
-  ctx.moveTo(0, H * 0.7);
-  ctx.quadraticCurveTo(W * 0.3, H * 0.55, W * 0.55, H * 0.7);
-  ctx.quadraticCurveTo(W * 0.8, H * 0.8, W, H * 0.68);
-  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
-  /* 中央の被写体（人物シルエット） */
-  ctx.fillStyle = '#40607a';
-  ctx.beginPath(); ctx.arc(W * 0.5, H * 0.46, W * 0.055, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(W * 0.44, H * 0.78);
-  ctx.quadraticCurveTo(W * 0.5, H * 0.52, W * 0.56, H * 0.78);
+  ctx.moveTo(0, H * 0.63);
+  ctx.lineTo(W * 0.22, H * 0.40);
+  ctx.lineTo(W * 0.42, H * 0.58);
+  ctx.lineTo(W * 0.61, H * 0.435);
+  ctx.lineTo(W * 0.83, H * 0.60);
+  ctx.lineTo(W, H * 0.50);
+  ctx.lineTo(W, H * 0.72);
+  ctx.lineTo(0, H * 0.72);
   ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5f8f6a';
+  ctx.beginPath();
+  ctx.moveTo(0, H * 0.71);
+  ctx.quadraticCurveTo(W * 0.32, H * 0.60, W * 0.58, H * 0.695);
+  ctx.quadraticCurveTo(W * 0.82, H * 0.765, W, H * 0.665);
+  ctx.lineTo(W, H * 0.875); ctx.lineTo(0, H * 0.875);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#4c7a57';
+  ctx.fillRect(0, H * 0.875, W, H * 0.125);
 }
 
 /* アプリ内生成（お試し）: 縁に装飾が集まり中央が白く空いた絵を、手続き的に描く */
@@ -484,6 +492,15 @@ function drawBase(ctx, layer, W, H) {
     ctx.lineWidth = bw; ctx.strokeStyle = layer.frameColor;
     ctx.strokeRect(bw, bw, W - bw * 2, H - bw * 2);
     ctx.strokeRect(bw * 2.6, bw * 2.6, W - bw * 5.2, H - bw * 5.2);
+    /* 四隅に飾りモチーフ（大きめ） */
+    if (layer.motif !== 'none' && layer.density > 0) {
+      const s = (short * 0.014 + bw * 0.4) * 1.4 * (0.7 + layer.density * 0.006);
+      const inset = bw * 2.6 + s * 0.7;
+      drawMotifShape(ctx, layer.motif, inset, inset, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, W - inset, inset, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, inset, H - inset, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, W - inset, H - inset, s, layer.accentColor);
+    }
   } else if (layer.template === 'thick-band') {
     ctx.lineWidth = bw * 2; ctx.strokeStyle = layer.frameColor;
     ctx.strokeRect(bw, bw, W - bw * 2, H - bw * 2);
@@ -502,6 +519,14 @@ function drawBase(ctx, layer, W, H) {
     ctx.moveTo(W - m, H - m - L); ctx.lineTo(W - m, H - m); ctx.lineTo(W - m - L, H - m);
     ctx.moveTo(m + L, H - m); ctx.lineTo(m, H - m); ctx.lineTo(m, H - m - L);
     ctx.stroke();
+    /* 四隅の頂点に飾りモチーフ（大きめ） */
+    if (layer.motif !== 'none' && layer.density > 0) {
+      const s = (short * 0.014 + bw * 0.4) * 1.4 * (0.7 + layer.density * 0.006);
+      drawMotifShape(ctx, layer.motif, m, m, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, W - m, m, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, W - m, H - m, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, m, H - m, s, layer.accentColor);
+    }
   } else if (layer.template === 'surround') {
     const step = short * (0.16 - layer.density * 0.0011);
     const s = short * 0.016 + bw * 0.55;
@@ -521,6 +546,15 @@ function drawBase(ctx, layer, W, H) {
   } else { /* minimal */
     ctx.lineWidth = Math.max(1, bw * 0.6); ctx.strokeStyle = layer.frameColor;
     ctx.strokeRect(bw, bw, W - bw * 2, H - bw * 2);
+    /* 四隅に小さい飾りモチーフ */
+    if (layer.motif !== 'none' && layer.density > 0) {
+      const s = (short * 0.014 + bw * 0.4) * (0.7 + layer.density * 0.006);
+      const inset = bw * 2 + s * 0.6;
+      drawMotifShape(ctx, layer.motif, inset, inset, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, W - inset, inset, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, inset, H - inset, s, layer.accentColor);
+      drawMotifShape(ctx, layer.motif, W - inset, H - inset, s, layer.accentColor);
+    }
   }
   /* 下帯の上に飾りモチーフを等間隔に（thick-band / band のとき） */
   if ((layer.template === 'thick-band' || layer.template === 'band') && layer.motif !== 'none' && layer.density > 0) {
