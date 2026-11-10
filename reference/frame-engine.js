@@ -102,17 +102,21 @@ function clamp01(v) {
 
 /**
  * 縁マスク: 絵を縁のゾーンだけに残し、中央を取り除く。
- * 帯の幅は各辺 bandRatio（既定 0.20 = 20%）。
+ * 帯の幅は、左右と上が bandRatio（既定 0.08 = 8%、参照Spaceの「縁の幅」の既定）、
+ * 下が bottomRatio（既定 0.15 = 15%、同「帯の高さ」の既定）。
  * 内側の境界には小さい方の辺の featherRatio（既定 0.03 = 約3%）の
  * フェザーを付け、切断面を目立たせない。
  */
-function applyEdgeMask(imageData, { bandRatio = 0.20, featherRatio = 0.03 } = {}) {
+function applyEdgeMask(imageData, { bandRatio = 0.08, bottomRatio = 0.15, featherRatio = 0.03 } = {}) {
   const { data, width, height } = imageData;
+  const ix = Math.round(width * bandRatio);
+  const iy = Math.round(height * bandRatio);
+  const ib = Math.round(height * bottomRatio);
   const inner = {
-    x: Math.round(width * bandRatio),
-    y: Math.round(height * bandRatio),
-    width: width - Math.round(width * bandRatio) * 2,
-    height: height - Math.round(height * bandRatio) * 2,
+    x: ix,
+    y: iy,
+    width: width - ix * 2,
+    height: height - iy - ib,
   };
   const feather = Math.max(1, Math.round(Math.min(width, height) * featherRatio));
   for (let y = 0; y < height; y++) {
@@ -144,9 +148,9 @@ function applyCenterCutout(imageData) {
 
 /**
  * 帯のみ: 上帯または下帯だけを残す。
- * 帯の高さはキャンバスの高さの bandRatio（既定 0.25 = 25%）。
+ * 帯の高さはキャンバスの高さの bandRatio（既定 0.15 = 15%、参照Spaceの既定）。
  */
-function applyBandOnly(imageData, { side = 'top', bandRatio = 0.25 } = {}) {
+function applyBandOnly(imageData, { side = 'top', bandRatio = 0.15 } = {}) {
   const { data, width, height } = imageData;
   const band = Math.round(height * bandRatio);
   for (let y = 0; y < height; y++) {

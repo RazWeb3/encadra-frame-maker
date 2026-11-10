@@ -6,100 +6,196 @@
 <title>Encadra フレームメーカー（参照実装）</title>
 <!--
   Encadra Frame Maker — reference implementation (standalone)
-  指示書（../README.md）の参照実装です。ブラウザでこのファイルをそのまま開けば動作します。
-  Space へ移植するときは、この実装の構成・データ形式・振る舞いを土台にしてください。
-  保存は localStorage を使います（Space では Space のストレージに置き換えること）。
+  デザインの正本は参照Space（Encadra フレームメーカー）であり、この実装はそのデザインを
+  単体で動く形に写したものです。ブラウザでこのファイルをそのまま開けば動作します。
+  保存はプラットフォーム層（app.js の Platform）経由です。Space へ移植するときは
+  Platform の中身だけを Space のストレージに置き換えてください。
   MIT License — see ../LICENSE
 -->
 <style>
-  :root { color-scheme: light dark; --accent:#e8590c; --line:#8884; }
+  :root {
+    color-scheme: light dark;
+    --bg:#ece7db; --surface:#faf7f0; --text:#211c14; --dim:#71695b;
+    --border:#d8d0bf; --accent:#e05d0a; --radius:12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161a; --surface:#1e2127; --text:#f4f1ea; --dim:#9a958a; --border:#2e323b; --accent:#ff7a1a; }
+  }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; }
-  header { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  h1 { font-size: 20px; margin: 4px 0; }
-  .ver { opacity:.7; font-size: 13px; }
-  button { cursor:pointer; padding:6px 10px; border-radius:8px; border:1px solid var(--line); background:transparent; color:inherit; }
-  button.active { background: var(--accent); color:#fff; border-color: transparent; }
-  input[type="text"], input[type="number"], select, textarea { padding:6px; border-radius:8px; border:1px solid var(--line); background:transparent; color:inherit; }
-  input[type="range"] { width: 140px; }
-  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0; }
-  .layout { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
-  .previewBox { position:relative; }
-  canvas#preview { max-width: min(92vw, 480px); height:auto; border:1px solid var(--line); border-radius:8px; }
-  .panel { border:1px solid var(--line); border-radius:12px; padding:10px; min-width:300px; flex:1; }
-  .layerItem { display:flex; gap:6px; align-items:center; padding:6px; border:1px solid var(--line); border-radius:8px; margin:4px 0; }
-  .layerItem.selected { outline:2px solid var(--accent); }
-  .layerItem .name { flex:1; }
-  .editor label { display:flex; gap:8px; align-items:center; margin:6px 0; font-size:14px; }
-  .gallery { display:flex; gap:10px; flex-wrap:wrap; }
-  .gItem { width:130px; border:1px solid var(--line); border-radius:8px; padding:6px; font-size:12px; }
-  .gItem img { width:100%; height:auto; display:block; border-radius:4px; }
-  .small { font-size:13px; opacity:.85; }
-  .ok { color:#2b8a3e; } .ng { color:#e03131; } .warn { color:#e8890c; }
-  textarea { width:100%; min-height:64px; }
-  .steps { font-size:14px; }
+  body {
+    font-family: "Avenir Next", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    margin: 0; background: var(--bg); color: var(--text);
+  }
+  .wrap { margin: 0 auto; max-width: 1152px; padding: 0 16px 40px; }
+  .toprow { display: flex; gap: 12px; align-items: flex-start; padding-top: 16px; }
+  .intro { max-width: 36rem; font-size: 14px; line-height: 20px; color: var(--dim); margin: 0; }
+  .langBtn { margin-left: auto; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); padding: 6px 12px; font-size: 14px; font-weight: 600; cursor: pointer; color: inherit; }
+  .steps { list-style: none; margin: 16px 0 0; padding: 12px; display: grid; gap: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); font-size: 14px; font-weight: 500; }
+  @media (min-width: 640px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+  .steps li { margin: 0; }
+  .main { display: grid; gap: 24px; margin-top: 16px; align-items: start; }
+  @media (min-width: 1024px) { .main { grid-template-columns: minmax(0, 440px) 1fr; } }
+  .leftCol { display: block; }
+  @media (min-width: 1024px) { .leftCol { position: sticky; top: 16px; } }
+  .previewFrame { overflow: hidden; border-radius: var(--radius); border: 1px solid var(--border); }
+  canvas#preview { display: block; width: 100%; height: auto; }
+  .section { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 16px; }
+  .section h2 { font-size: 16px; line-height: 24px; font-weight: 700; margin: 0 0 12px; }
+  .section h2.tight { margin-bottom: 4px; }
+  .guide { font-size: 12px; line-height: 1.6; color: var(--dim); margin: 0; }
+  .stack > * + * { margin-top: 24px; }
+  .segLabel { font-size: 14px; font-weight: 500; margin: 0 0 6px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button, .pill { border-radius: 999px; border: 1px solid var(--border); background: var(--surface); padding: 6px 12px; font-size: 14px; font-weight: 600; cursor: pointer; color: inherit; }
+  .seg button.on, .pill.on { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .pill.sm { padding: 4px 10px; font-size: 12px; }
+  .pill.red { color: #dc2626; }
+  button:disabled { opacity: .5; cursor: default; }
+  .sizeLine { font-size: 12px; color: var(--dim); margin-top: 8px; }
+  .vrow { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 6px 0; }
+  .badge { width: 20px; height: 20px; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .badge.ok { background: #059669; } .badge.ng { background: #dc2626; } .badge.na { background: var(--dim); }
+  .fname { font-size: 12px; color: var(--dim); margin-top: 12px; }
+  .fname code { font-family: ui-monospace, monospace; }
+  .btnPrimary { width: 100%; border: none; border-radius: var(--radius); background: var(--accent); color: #fff; padding: 12px 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .btnSub { width: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer; color: inherit; }
+  .btnStack { display: grid; gap: 8px; margin-top: 16px; }
+  .layerList { list-style: none; margin: 0; padding: 0; }
+  .layerList li { display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-top: 1px solid var(--border); }
+  .layerList li:first-child { border-top: none; }
+  .layerList li.sel { background: var(--bg); border-radius: 8px; }
+  .dot { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .lname { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lsub { font-size: 12px; color: var(--dim); }
+  .mini { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 4px 8px; font-size: 14px; cursor: pointer; color: inherit; }
+  .mini.del { font-weight: 700; color: #dc2626; }
+  .editor { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .grid3 { display: grid; gap: 12px; }
+  label.f { display: block; font-size: 14px; font-weight: 500; margin: 0 0 6px; }
+  .sliderRow { display: flex; justify-content: space-between; align-items: baseline; }
+  .sliderRow .val { font-family: ui-monospace, monospace; font-size: 12px; color: var(--dim); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  input[type="text"], input[type="number"], select, textarea {
+    width: 100%; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--bg); color: inherit; padding: 8px 12px; font-size: 16px;
+  }
+  textarea { font-size: 12px; line-height: 1.6; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 500; }
+  .check input { width: 20px; height: 20px; accent-color: var(--accent); }
+  .dashedBtn { width: 100%; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); padding: 12px 16px; font-size: 14px; font-weight: 600; cursor: pointer; color: inherit; }
+  .reqBlock { border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); padding: 12px; margin-top: 16px; }
+  .reqBlock h3 { font-size: 14px; font-weight: 700; margin: 0 0 8px; }
+  .copyBtn { width: 100%; margin-top: 8px; border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .copied { font-size: 12px; font-weight: 600; color: #059669; margin-top: 6px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .sw { width: 32px; height: 32px; border-radius: 999px; border: 2px solid var(--border); cursor: pointer; padding: 0; }
+  .sw.on { border-color: var(--accent); }
+  input[type="color"] { width: 40px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 2px; }
+  .hex { font-family: ui-monospace, monospace; font-size: 12px; color: var(--dim); }
+  .tplGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  @media (min-width: 640px) { .tplGrid { grid-template-columns: repeat(3, 1fr); } }
+  .tplBtn { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 12px; font-size: 14px; font-weight: 600; cursor: pointer; color: inherit; }
+  .tplBtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .themeDot { display: inline-block; width: 12px; height: 12px; border-radius: 999px; margin-right: 6px; vertical-align: -1px; }
+  .galGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  @media (min-width: 640px) { .galGrid { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 1024px) { .galGrid { grid-template-columns: repeat(4, 1fr); } }
+  .gCard { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+  .gCard img { width: 100%; display: block; }
+  .gMeta { padding: 8px; }
+  .gMeta .r { font-size: 12px; font-weight: 600; }
+  .gMeta .t { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gBtns { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .histCard { display: flex; gap: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); padding: 8px; margin-top: 8px; }
+  .histCard img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; }
+  .rowFlex { display: flex; gap: 8px; align-items: center; }
+  .rowFlex > * { flex: none; }
+  .rowFlex .grow { flex: 1; }
+  .mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; }
+  .warnText { font-size: 14px; color: #d97706; margin-top: 8px; }
+  .errText { font-size: 14px; color: #dc2626; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
 <body>
-<header>
-  <h1 id="appTitle">Encadra フレームメーカー</h1>
-  <span class="ver" id="sheetVersion"></span>
-  <span class="row" style="margin-left:auto">
-    <button id="langJa">日本語</button>
-    <button id="langEn">English</button>
-  </span>
-</header>
+<div class="wrap">
+  <div class="toprow">
+    <p class="intro" id="introText"></p>
+    <button class="langBtn" id="langToggle" aria-label="Language / 言語">EN</button>
+  </div>
+  <ol class="steps" id="steps"></ol>
 
-<div class="steps" id="howto"></div>
+  <div class="main">
+    <div class="leftCol">
+      <div class="previewFrame"><canvas id="preview" width="440" height="550"></canvas></div>
+      <div class="mt12">
+        <p class="segLabel" id="bgLabel"></p>
+        <div class="seg" id="bgSeg"></div>
+      </div>
+      <div class="sizeLine" id="sizeLine"></div>
 
-<div class="row">
-  <label id="themeLabel">テーマ</label>
-  <input type="text" id="theme" size="24" placeholder="travel / cat / birthday">
-  <span id="ratioLabel">比率</span>
-  <span id="ratioButtons"></span>
-</div>
+      <div class="section mt16">
+        <h2 id="exportTitle"></h2>
+        <div id="verifyRows"></div>
+        <div class="warnText" id="motifWarn" style="display:none"></div>
+        <div class="fname"><span id="fnameLabel"></span><code id="fnameValue"></code></div>
+        <div class="btnStack">
+          <button class="btnPrimary" id="exportOne"></button>
+          <button class="btnSub" id="exportAll"></button>
+        </div>
+      </div>
+    </div>
 
-<div class="layout">
-  <div>
-    <div class="previewBox"><canvas id="preview" width="480" height="600"></canvas></div>
-    <div class="row" id="bgButtons"></div>
-    <div class="panel" style="min-width:0">
-      <div class="row"><strong id="verifyTitle">書き出し前検証</strong></div>
-      <div id="verifyResults" class="small"></div>
-      <div class="row">
-        <button id="exportOne"></button>
-        <button id="exportAll"></button>
+    <div class="stack">
+      <div class="section">
+        <h2 id="ratioTitle"></h2>
+        <div class="seg" id="ratioSeg"></div>
+      </div>
+
+      <div class="section">
+        <h2 class="tight" id="layersTitle"></h2>
+        <p class="guide" id="layersGuide"></p>
+        <ul class="layerList" id="layerList"></ul>
+        <div class="mt12">
+          <p class="segLabel" id="addLayerLabel"></p>
+          <div class="seg" id="addLayerSeg"></div>
+        </div>
+        <div class="editor" id="layerEditor"></div>
+      </div>
+
+      <div class="section">
+        <h2 id="genTitle"></h2>
+        <p class="guide" id="genGuide"></p>
+        <div class="mt12">
+          <label class="f" for="genTheme" id="genThemeLabel"></label>
+          <input type="text" id="genTheme">
+        </div>
+        <div class="btnStack"><button class="btnPrimary" id="genButton"></button></div>
+        <div class="errText mt8" id="genError" style="display:none"></div>
+        <h3 class="mt16" style="font-size:14px" id="histTitle"></h3>
+        <div id="histList"></div>
+      </div>
+
+      <div class="section">
+        <h2 id="tplTitle"></h2>
+        <div class="rowFlex">
+          <input type="text" id="tplName" class="grow">
+          <button class="pill on" id="tplSave"></button>
+        </div>
+        <div id="tplList"></div>
       </div>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="row"><strong id="layersTitle">レイヤー</strong></div>
-    <div id="layerList"></div>
-    <div class="row" id="addLayerButtons"></div>
-    <div class="editor" id="layerEditor"></div>
-    <hr>
-    <div class="row"><strong id="requestTitle">Museへの依頼文</strong></div>
-    <textarea id="requestText" readonly></textarea>
-    <div class="row">
-      <button id="reqArt"></button>
-      <button id="reqMotif"></button>
-      <button id="reqCopy"></button>
-    </div>
-    <hr>
-    <div class="row">
-      <strong id="templateTitle">テンプレート</strong>
-      <input type="text" id="templateName" size="14">
-      <button id="templateSave"></button>
-    </div>
-    <div id="templateList"></div>
+  <div class="section mt16">
+    <h2 class="tight" id="galleryTitle"></h2>
+    <p class="guide" id="galleryGuide"></p>
+    <div class="galGrid mt12" id="galleryGrid"></div>
+    <p class="guide mt12" id="galleryEmpty"></p>
   </div>
+
+  <p class="sizeLine" id="footerNote"></p>
 </div>
-
-<h3 id="galleryTitle">フレームギャラリー</h3>
-<div class="gallery" id="gallery"></div>
-
-<p class="small" id="footerNote"></p>
 
 <script src="frame-engine.js"></script>
 <script src="app.js"></script>
