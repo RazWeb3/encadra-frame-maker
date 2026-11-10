@@ -7,9 +7,9 @@ Encadra frame maker for Muse (Meta's personal AI agent): give this repository to
 
 ## 使い方
 
-最新のリリースのURLを、あなたのMuseに渡してください。
+このリポジトリのURLを、あなたのMuseに渡してください。常に最新の指示書が読まれます（版の管理は指示書の §0 で行われます）。
 
-https://github.com/RazWeb3/encadra-frame-maker/releases/tag/v0.10
+https://github.com/RazWeb3/encadra-frame-maker
 
 指示書は日本語で書かれていますが、そのまま渡せば、あなたの言語で会話し、あなたの言語のSpaceが作られます（The instruction sheet is in Japanese, but your Muse will work in your language）。
 
