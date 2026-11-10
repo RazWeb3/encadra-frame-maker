@@ -27,7 +27,7 @@
 
 /* ================= i18n（UIの既定言語はユーザーの言語。最低限 英語への切替を持つ） ================= */
 
-const SHEET_VERSION = 'v0.9';
+const SHEET_VERSION = 'v0.10';
 
 const STR = {
   ja: {
@@ -85,19 +85,30 @@ let state = {
   gallery: [],
 };
 
+/* ================= プラットフォーム層（保存） =================
+   Space へ移植するときに置き換えてよいのは、この Platform の中身だけです。
+   呼び出し側（save / load の使い方、書き出し→検証→ギャラリー記録という処理の
+   流れと順序）は、無変更で埋め込む側です。置き換えるときは、persist が
+   「渡された文字列をそのまま保存する」、restore が「保存した文字列をそのまま
+   返す」という契約を守ってください。Space では Space のストレージで実装します。 */
+const Platform = {
+  persist(text) {
+    try { localStorage.setItem(STORE_KEY, text); }
+    catch (e) { console.warn('save failed (storage full?)', e); }
+  },
+  restore() {
+    try { return localStorage.getItem(STORE_KEY); }
+    catch (e) { return null; }
+  },
+};
+
 function save() {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
-  } catch (e) {
-    // 画像が大きく localStorage に収まらない場合はメモリ上のみで続行する
-    // （Space への移植時は Space のストレージを使うため、この制限は持ち込まない）
-    console.warn('save failed (storage full?)', e);
-  }
+  Platform.persist(JSON.stringify(state));
 }
 
 function load() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = Platform.restore();
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.layers)) state = parsed;
@@ -370,7 +381,7 @@ function renderLayer(layer, W, H) {
 
 /**
  * 全レイヤーを合成する。
- * @param opts.excludeMotif 検証用: モチーフ層を除いて合成する（§5-2）
+ * @param opts.excludeMotif 検証用: モチーフ層を除いて合成する（§6-2）
  * @param opts.onlyMotif    検証用: モチーフ層だけを合成する（警告判定）
  */
 function compose(W, H, opts = {}) {
@@ -415,7 +426,7 @@ function renderPreview() {
   renderVerify();
 }
 
-/* ================= 検証（§5。結果を表示し、失敗したら書き出さない） ================= */
+/* ================= 検証（§6。結果を表示し、失敗したら書き出さない） ================= */
 
 function currentValidation() {
   const { width: W, height: H } = E.SIZES[state.ratio];
@@ -631,7 +642,7 @@ function renderTemplates() {
   }
 }
 
-/* ================= Museへの依頼文（§2.2の雛形どおりに組み立てる） ================= */
+/* ================= Museへの依頼文（README「生成ルール」の雛形どおりに組み立てる） ================= */
 
 let requestKind = 'art';
 function renderRequest() {
@@ -822,7 +833,7 @@ function renderEditor() {
   }
 }
 
-/* ================= 直接投入の経路（§2.1） =================
+/* ================= 直接投入の経路（§3） =================
    会話の中で生成した画像を、ユーザーの手作業なしにレイヤーへ入れるための口。
    Space への移植時は、この口を Space の保存の仕組みに接続すること。 */
 
