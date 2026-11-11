@@ -34,7 +34,7 @@
 
 'use strict';
 
-const SHEET_VERSION = 'v0.12';
+const SHEET_VERSION = 'v0.13';
 const STORE_KEY = 'encadraFrameMaker.v1';
 const GALLERY_LIMIT = 60;
 
@@ -654,7 +654,12 @@ function sliderField(parent, labelText, min, max, step, value, unit, onInput) {
   wrap.appendChild(row);
   const input = h('input');
   input.type = 'range'; input.min = min; input.max = max; input.step = step; input.value = value;
-  input.oninput = () => { val.textContent = `${input.value}${unit}`; onInput(parseFloat(input.value)); };
+  /* ドラッグ中はエディタを作り直さないこと。作り直すと掴んでいるスライダー自体が
+     破棄され、ドラッグがその場で死ぬ（タップだけ効いてスライドが効かない症状になる）。
+     input（ドラッグ中）は値とプレビューの更新だけ、保存と全体の再描画は
+     change（離したとき）に1回だけ行う。onInput へは第2引数 commit で区別を渡す。 */
+  input.oninput = () => { val.textContent = `${input.value}${unit}`; onInput(parseFloat(input.value), false); };
+  input.onchange = () => { onInput(parseFloat(input.value), true); };
   wrap.appendChild(input);
   parent.appendChild(wrap);
   return input;
@@ -761,7 +766,7 @@ function previewDims() {
   return { w, h: Math.round(w * height / width) };
 }
 
-function refresh() {
+function refreshPreview() {
   renderStatic();
   renderBgSeg();
   renderRatioSeg();
@@ -793,6 +798,10 @@ function refresh() {
   if (v.motifPx > 0) { warn.style.display = ''; warn.textContent = t().motifWarn(v.motifPx.toLocaleString()); }
   else warn.style.display = 'none';
   $('fnameValue').textContent = FrameEngine.fileNameFor(state.ratio, state.theme);
+}
+
+function refresh() {
+  refreshPreview();
   renderLayerList();
   renderEditor();
   renderHistory();
@@ -903,7 +912,7 @@ function renderEditor() {
   selectedLayerId = layer.id;
   const grid = h('div', 'grid3');
   textField(grid, s.layerName, layer.name, (v) => { layer.name = v; save(); renderLayerList(); }, s.typeNames[layer.type]);
-  sliderField(grid, s.opacity, 0, 100, 1, layer.opacity ?? 100, '%', (v) => { layer.opacity = v; save(); refresh(); });
+  sliderField(grid, s.opacity, 0, 100, 1, layer.opacity ?? 100, '%', (v, commit) => { layer.opacity = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
   ed.appendChild(grid);
   const body = h('div', 'grid3 mt12');
   ed.appendChild(body);
@@ -929,11 +938,11 @@ function renderEditor() {
     segControl(w, Object.keys(s.fits).map((k) => ({ value: k, label: s.fits[k] })), layer.fit, (v) => { layer.fit = v; save(); refresh(); });
     if (layer.fit === 'white-key') body.appendChild(h('p', 'guide mt8', s.fitKeyNote));
     if (layer.fit === 'edge-mask') {
-      sliderField(body, s.edgeW, 2, 25, 1, layer.borderPct, '%', (v) => { layer.borderPct = v; save(); refresh(); });
-      sliderField(body, s.bandH, 0, 30, 1, layer.bandPct, '%', (v) => { layer.bandPct = v; save(); refresh(); });
+      sliderField(body, s.edgeW, 2, 25, 1, layer.borderPct, '%', (v, commit) => { layer.borderPct = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
+      sliderField(body, s.bandH, 0, 30, 1, layer.bandPct, '%', (v, commit) => { layer.bandPct = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
     }
     if (layer.fit === 'band-only') {
-      sliderField(body, s.bandH, 6, 40, 1, layer.bandPct, '%', (v) => { layer.bandPct = v; save(); refresh(); });
+      sliderField(body, s.bandH, 6, 40, 1, layer.bandPct, '%', (v, commit) => { layer.bandPct = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
     }
     if (layer.fit === 'full-cut') {
       toggleField(body, s.cutCenter, layer.cutCenter, (v) => { layer.cutCenter = v; save(); refresh(); });
@@ -944,7 +953,7 @@ function renderEditor() {
   if (layer.type === 'motif') {
     const w = labeled(body, s.pos);
     segControl(w, MOTIF_POS.map((k) => ({ value: k, label: s.posNames[k] })), layer.pos, (v) => { layer.pos = v; save(); refresh(); });
-    sliderField(body, s.size, 8, 45, 1, layer.sizePct, '%', (v) => { layer.sizePct = v; save(); refresh(); });
+    sliderField(body, s.size, 8, 45, 1, layer.sizePct, '%', (v, commit) => { layer.sizePct = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
     toggleField(body, s.keyout, layer.keyout, (v) => { layer.keyout = v; save(); refresh(); });
     requestBlock(ed, layer, 'motif');
   }
@@ -959,7 +968,7 @@ function renderEditor() {
     const w3 = labeled(body, s.font);
     segControl(w3, Object.keys(s.fonts).map((k) => ({ value: k, label: s.fonts[k] })), layer.font, (v) => { layer.font = v; save(); refresh(); });
     colorField(body, s.color, layer.color, (v) => { layer.color = v; save(); refresh(); });
-    sliderField(body, s.textSize, 50, 200, 5, layer.sizePct, '%', (v) => { layer.sizePct = v; save(); refresh(); });
+    sliderField(body, s.textSize, 50, 200, 5, layer.sizePct, '%', (v, commit) => { layer.sizePct = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
   }
 
   if (layer.type === 'base') {
@@ -990,9 +999,9 @@ function renderEditor() {
     colorField(body, s.frameColor, layer.frameColor, (v) => { layer.frameColor = v; layer.theme = 'custom'; save(); refresh(); });
     colorField(body, s.bandColor, layer.bandColor, (v) => { layer.bandColor = v; layer.theme = 'custom'; save(); refresh(); });
     colorField(body, s.accentColor, layer.accentColor, (v) => { layer.accentColor = v; layer.theme = 'custom'; save(); refresh(); });
-    sliderField(body, s.borderW, 0.3, 3.5, 0.1, layer.borderPct, '%', (v) => { layer.borderPct = v; save(); refresh(); });
-    sliderField(body, s.bandH, 6, 30, 1, layer.bandPct, '%', (v) => { layer.bandPct = v; save(); refresh(); });
-    sliderField(body, s.density, 0, 100, 1, layer.density, '', (v) => { layer.density = v; save(); refresh(); });
+    sliderField(body, s.borderW, 0.3, 3.5, 0.1, layer.borderPct, '%', (v, commit) => { layer.borderPct = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
+    sliderField(body, s.bandH, 6, 30, 1, layer.bandPct, '%', (v, commit) => { layer.bandPct = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
+    sliderField(body, s.density, 0, 100, 1, layer.density, '', (v, commit) => { layer.density = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
     const w3 = labeled(body, s.motifShape);
     segControl(w3, Object.keys(s.shapes).map((k) => ({ value: k, label: s.shapes[k] })), layer.motif, (v) => { layer.motif = v; save(); refresh(); });
   }
