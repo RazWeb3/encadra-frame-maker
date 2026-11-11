@@ -4,7 +4,8 @@
  * フレーム生成の核になる処理の参照実装です。指示書（README.md）の仕様のうち、
  * 解釈が分かれると困る計算を、移植可能な形で固定します。
  * This module fixes the calculations that must not vary between implementations:
- * export sizes, the white key-out formula, art-layer fit masks, filename rules,
+ * export sizes, the white key-out formula, art-layer fit masks (including the
+ * v0.14 white-frame fits: as-is alpha and window-only flood fill), filename rules,
  * and the export validation checks (README §4 / §6).
  *
  * 使い方 / How to use:
@@ -163,6 +164,95 @@ function applyBandOnly(imageData, { side = 'top', bandRatio = 0.15 } = {}) {
   return imageData;
 }
 
+
+/* ------------------------------------------------------------------ */
+/* v0.14 白地フレーム用のはめ方（そのまま／窓だけ抜く）                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 透明ピクセルの割合（アルファが threshold 以下のピクセルの比率）。
+ * 取り込んだ画像が既に窓抜き済みかどうか（「そのまま」の推奨判定）に使う。
+ */
+function transparentRatio(imageData, threshold = 10) {
+  const { data } = imageData;
+  let t = 0, n = 0;
+  for (let i = 3; i < data.length; i += 4) { n++; if (data[i] <= threshold) t++; }
+  return n ? t / n : 0;
+}
+
+/**
+ * 窓だけ抜く: 中央ピクセルの色を起点に、色の距離が tolerance 以内で
+ * 4方向につながっている領域だけを透過化する（フラッドフィル）。
+ * 白地そのものと、窓と同じ色でも離れている文字・アイコンは残る。
+ * 中央が既に透明な画像では何もしない（removed = 0, alreadyTransparent = true）。
+ * @returns {{removed:number, ratio:number, alreadyTransparent:boolean, color:number[]|null}}
+ */
+function applyWindowFlood(imageData, { tolerance = 32 } = {}) {
+  const { data, width, height } = imageData;
+  const cx = Math.floor(width / 2), cy = Math.floor(height / 2);
+  const ci = (cy * width + cx) * 4;
+  if (data[ci + 3] <= 10) return { removed: 0, ratio: 0, alreadyTransparent: true, color: null };
+  const cr = data[ci], cg = data[ci + 1], cb = data[ci + 2];
+  const tol2 = tolerance * tolerance * 3;
+  const visited = new Uint8Array(width * height);
+  const stack = [cy * width + cx];
+  visited[stack[0]] = 1;
+  let removed = 0;
+  while (stack.length) {
+    const idx = stack.pop();
+    const i = idx * 4;
+    const dr = data[i] - cr, dg = data[i + 1] - cg, db = data[i + 2] - cb;
+    if (dr * dr + dg * dg + db * db > tol2) continue;
+    if (data[i + 3] > 0) { data[i + 3] = 0; removed++; }
+    const x = idx % width, y = Math.floor(idx / width);
+    if (x > 0 && !visited[idx - 1]) { visited[idx - 1] = 1; stack.push(idx - 1); }
+    if (x < width - 1 && !visited[idx + 1]) { visited[idx + 1] = 1; stack.push(idx + 1); }
+    if (y > 0 && !visited[idx - width]) { visited[idx - width] = 1; stack.push(idx - width); }
+    if (y < height - 1 && !visited[idx + width]) { visited[idx + width] = 1; stack.push(idx + width); }
+  }
+  return { removed, ratio: removed / (width * height), alreadyTransparent: false, color: [cr, cg, cb] };
+}
+
+/**
+ * 窓の矩形マスク: 四辺の余白（キャンバスに対する比率）で決まる矩形の内側を透過にする。
+ * フラッドフィルで窓を検出できない場合のフォールバック。
+ * margins = { left, top, right, bottom }（各 0〜0.45）
+ */
+function applyWindowRect(imageData, margins = {}) {
+  const { data, width, height } = imageData;
+  const m = { left: 0.10, top: 0.15, right: 0.10, bottom: 0.15, ...margins };
+  const x0 = Math.round(width * m.left), x1 = Math.round(width * (1 - m.right));
+  const y0 = Math.round(height * m.top), y1 = Math.round(height * (1 - m.bottom));
+  let removed = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * width + x) * 4 + 3;
+      if (data[i] > 0) { data[i] = 0; removed++; }
+    }
+  }
+  return { removed, ratio: removed / (width * height) };
+}
+
+/**
+ * 「窓だけ抜く」の本体: まずフラッドフィルを試し、除去できた割合が
+ * 2%未満（窓色が中央とつながっていない等）なら矩形マスクに切り替える。
+ * 中央が既に透明なら何もしない。
+ * @returns {{mode:'flood'|'rect'|'already', removed:number, ratio:number}}
+ */
+function applyWindowOnly(imageData, { tolerance = 32, margins } = {}) {
+  // まずコピーで試す。窓色が白地と同じ等で画面の大半（70%超）が抜けてしまう
+  // フラッドは誤判定として捨て、矩形マスクに切り替える（原本を壊さないため）。
+  const trial = { data: new Uint8ClampedArray(imageData.data), width: imageData.width, height: imageData.height };
+  const f = applyWindowFlood(trial, { tolerance });
+  if (f.alreadyTransparent) return { mode: 'already', removed: 0, ratio: 0 };
+  if (f.ratio >= 0.02 && f.ratio <= 0.70) {
+    imageData.data.set(trial.data);
+    return { mode: 'flood', removed: f.removed, ratio: f.ratio };
+  }
+  const r = applyWindowRect(imageData, margins);
+  return { mode: 'rect', removed: r.removed, ratio: r.ratio };
+}
+
 /* ------------------------------------------------------------------ */
 /* §4 ファイル名                                                        */
 /* ------------------------------------------------------------------ */
@@ -291,6 +381,10 @@ const FrameEngine = {
   centerRect,
   keyoutFactor,
   applyKeyout,
+  transparentRatio,
+  applyWindowFlood,
+  applyWindowRect,
+  applyWindowOnly,
   applyEdgeMask,
   applyCenterCutout,
   applyBandOnly,
