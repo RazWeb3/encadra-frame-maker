@@ -49,7 +49,7 @@
   .seg { display: flex; flex-wrap: wrap; gap: 6px; }
   .seg button, .pill { border-radius: 999px; border: 1px solid var(--border); background: var(--surface); padding: 6px 12px; font-size: 14px; font-weight: 600; cursor: pointer; color: inherit; }
   .seg button.on, .pill.on { border-color: var(--accent); background: var(--accent); color: #fff; }
-  .pill.sm { padding: 4px 10px; font-size: 12px; }
+  .pill.sm { padding: 6px 12px; font-size: 12px; min-height: 36px; }
   .pill.red { color: #dc2626; }
   button:disabled { opacity: .5; cursor: default; }
   .sizeLine { font-size: 12px; color: var(--dim); margin-top: 8px; }
@@ -68,7 +68,7 @@
   .dot { width: 12px; height: 12px; border-radius: 3px; flex: none; }
   .lname { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lsub { font-size: 12px; color: var(--dim); }
-  .mini { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 4px 8px; font-size: 14px; cursor: pointer; color: inherit; }
+  .mini { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 4px 8px; font-size: 14px; cursor: pointer; color: inherit; min-width: 40px; min-height: 40px; }
   .mini.del { font-weight: 700; color: #dc2626; }
   .editor { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
   .grid3 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
@@ -117,6 +117,13 @@
   .warnText { font-size: 14px; color: #d97706; margin-top: 8px; }
   .errText { font-size: 14px; color: #dc2626; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .modalOverlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 60; }
+  .modalCard { background: var(--surface); color: var(--text); border-radius: var(--radius); padding: 20px; width: 100%; max-width: 400px; }
+  .modalCard h3 { font-size: 16px; font-weight: 700; margin: 0 0 8px; }
+  .modalTarget { font-size: 14px; color: var(--dim); overflow-wrap: anywhere; }
+  .modalBtns { display: flex; gap: 8px; margin-top: 16px; }
+  .modalBtns button { flex: 1; min-height: 44px; font-size: 15px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #26221e; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; z-index: 80; box-shadow: 0 4px 16px rgba(0,0,0,.3); max-width: calc(100vw - 32px); }
 </style>
 </head>
 <body>
