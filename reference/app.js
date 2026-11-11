@@ -35,7 +35,7 @@
 
 'use strict';
 
-const SHEET_VERSION = 'v0.14';
+const SHEET_VERSION = 'v0.15';
 const STORE_KEY = 'encadraFrameMaker.v1';
 const GALLERY_LIMIT = 60;
 
@@ -214,6 +214,9 @@ const STR = {
     galleryEmpty: 'まだ書き出したフレームはありません。',
     gRestore: '呼び出す', gRedl: '再ダウンロード',
     confirmDel: '本当に削除しますか？', doDel: '削除する', cancel: 'キャンセル',
+    deleting: '削除中…', delFailed: '削除に失敗しました。もう一度お試しください。',
+    doneDeleted: '削除しました', doneExport: '書き出しが完了しました', doneRestore: '呼び出しました',
+    doneLoaded: '読み込みました', doneDownload: 'ダウンロードしました', doneAdded: 'レイヤーに追加しました',
     savedFlash: ' · 自動保存しました',
     version: '対応している指示書の版: ',
     footer: '書き出したPNGは Encadra のカスタムフレームに登録して使います。比率ごとに別に作るのが基本です。',
@@ -279,6 +282,9 @@ const STR = {
     galleryEmpty: 'No frames exported yet.',
     gRestore: 'Restore', gRedl: 'Re-download',
     confirmDel: 'Delete this item?', doDel: 'Delete', cancel: 'Cancel',
+    deleting: 'Deleting…', delFailed: 'Delete failed. Please try again.',
+    doneDeleted: 'Deleted', doneExport: 'Export complete', doneRestore: 'Restored',
+    doneLoaded: 'Loaded', doneDownload: 'Downloaded', doneAdded: 'Added as a layer',
     savedFlash: ' · Auto-saved',
     version: 'Instruction sheet version: ',
     footer: 'Register exported PNGs as custom frames in Encadra. Make one frame per ratio.',
@@ -851,11 +857,11 @@ function renderLayerList() {
     const del = h('button', 'mini del', '✕');
     del.disabled = state.layers.length <= 1;
     if (del.disabled) del.style.opacity = '.4';
-    del.onclick = () => {
+    del.onclick = () => confirmDeleteModal(layer.name || s.typeNames[layer.type] || '', () => {
       state.layers = state.layers.filter((l) => l.id !== layer.id);
       if (selectedLayerId === layer.id) selectedLayerId = state.layers[state.layers.length - 1].id;
       save(); refresh();
-    };
+    });
     li.appendChild(up); li.appendChild(down); li.appendChild(del);
     ul.appendChild(li);
   });
@@ -1170,7 +1176,7 @@ async function onExportOne() {
   const btn = $('exportOne');
   btn.disabled = true; btn.textContent = t().exporting;
   const r = await exportOne(state.ratio);
-  if (r) downloadBlob(r.blob, r.fileName);
+  if (r) { downloadBlob(r.blob, r.fileName); showToast(t().doneExport); }
   btn.disabled = false;
   refresh();
 }
@@ -1182,14 +1188,75 @@ async function onExportAll() {
     const r = await exportOne(ratio);
     if (r) files.push({ name: r.fileName, blob: r.blob });
   }
-  if (files.length) downloadBlob(await zipStore(files), 'encadra-frames.zip');
+  if (files.length) { downloadBlob(await zipStore(files), 'encadra-frames.zip'); showToast(t().doneExport); }
   btn.disabled = false;
   refresh();
 }
 
 /* ================= ギャラリー・テンプレート・生成履歴の描画 ================= */
 
-let galleryConfirmId = null;
+/* ================= v0.15 フィードバック（モーダル確認／完了トースト） =================
+   削除系はすべて画面中央のモーダル確認に統一する。カード内差し替え式は、
+   モバイルで確認ボタンが画面外へ押し出され「削除できない」と誤認されるため廃止。
+   実行系は完了トースト（約3.5秒）で結果を知らせる。 */
+
+let toastTimer = null;
+function showToast(msg) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = h('div', 'toast');
+    el.id = 'toast';
+    el.setAttribute('role', 'status');
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.display = '';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+function confirmDeleteModal(targetLabel, onDelete) {
+  const s = t();
+  const old = document.getElementById('delModal');
+  if (old) old.remove();
+  const overlay = h('div', 'modalOverlay');
+  overlay.id = 'delModal';
+  const card = h('div', 'modalCard');
+  card.appendChild(h('h3', '', s.confirmDel));
+  if (targetLabel) card.appendChild(h('div', 'modalTarget', targetLabel));
+  const err = h('div', 'errText');
+  err.style.display = 'none';
+  card.appendChild(err);
+  const btns = h('div', 'modalBtns');
+  const yes = h('button', 'pill on', s.doDel);
+  yes.style.background = '#dc2626'; yes.style.borderColor = '#dc2626';
+  const no = h('button', 'pill', s.cancel);
+  const close = () => overlay.remove();
+  no.onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  yes.onclick = () => {
+    yes.disabled = true; no.disabled = true;
+    yes.textContent = s.deleting;
+    err.style.display = 'none';
+    setTimeout(() => {
+      try {
+        onDelete();
+        close();
+        showToast(s.doneDeleted);
+      } catch (e) {
+        err.textContent = s.delFailed;
+        err.style.display = '';
+        yes.disabled = false; no.disabled = false;
+        yes.textContent = s.doDel;
+      }
+    }, 60);
+  };
+  btns.appendChild(no); btns.appendChild(yes);
+  card.appendChild(btns);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
 function renderGallery() {
   const s = t();
   const grid = $('galleryGrid');
@@ -1206,36 +1273,30 @@ function renderGallery() {
     meta.appendChild(h('div', 'r', `${item.ratio} · ${new Date(item.ts).toLocaleString()}`));
     meta.appendChild(h('div', 't', item.theme || item.fileName));
     const btns = h('div', 'gBtns');
-    if (galleryConfirmId === item.id) {
-      meta.appendChild(h('div', 't', s.confirmDel));
-      meta.querySelector('.t:last-child').style.color = '#dc2626';
-      const yes = h('button', 'pill sm on', s.doDel);
-      yes.style.background = '#dc2626'; yes.style.borderColor = '#dc2626';
-      yes.onclick = () => { state.gallery = state.gallery.filter((g) => g.id !== item.id); galleryConfirmId = null; save(); refresh(); };
-      const no = h('button', 'pill sm', s.cancel);
-      no.onclick = () => { galleryConfirmId = null; refresh(); };
-      btns.appendChild(yes); btns.appendChild(no);
-    } else {
-      const restore = h('button', 'pill sm on', s.gRestore);
-      restore.onclick = () => {
-        state.layers = JSON.parse(JSON.stringify(item.snapshot.layers));
-        state.ratio = item.snapshot.ratio;
-        selectedLayerId = state.layers[state.layers.length - 1].id;
-        save(); refresh();
-      };
-      const dl = h('button', 'pill sm', s.gRedl);
-      dl.onclick = async () => {
-        const keep = state.layers;
-        state.layers = JSON.parse(JSON.stringify(item.snapshot.layers));
-        const { width: W, height: H } = FrameEngine.SIZES[item.ratio];
-        const blob = await canvasBlob(compose(W, H));
-        state.layers = keep;
-        downloadBlob(blob, item.fileName);
-      };
-      const del = h('button', 'pill sm red', s.del);
-      del.onclick = () => { galleryConfirmId = item.id; refresh(); };
-      btns.appendChild(restore); btns.appendChild(dl); btns.appendChild(del);
-    }
+    const restore = h('button', 'pill sm on', s.gRestore);
+    restore.onclick = () => {
+      state.layers = JSON.parse(JSON.stringify(item.snapshot.layers));
+      state.ratio = item.snapshot.ratio;
+      selectedLayerId = state.layers[state.layers.length - 1].id;
+      save(); refresh();
+      showToast(s.doneRestore);
+    };
+    const dl = h('button', 'pill sm', s.gRedl);
+    dl.onclick = async () => {
+      const keep = state.layers;
+      state.layers = JSON.parse(JSON.stringify(item.snapshot.layers));
+      const { width: W, height: H } = FrameEngine.SIZES[item.ratio];
+      const blob = await canvasBlob(compose(W, H));
+      state.layers = keep;
+      downloadBlob(blob, item.fileName);
+      showToast(s.doneDownload);
+    };
+    const del = h('button', 'pill sm red', s.del);
+    del.onclick = () => confirmDeleteModal(item.theme || item.fileName, () => {
+      state.gallery = state.gallery.filter((g) => g.id !== item.id);
+      save(); refresh();
+    });
+    btns.appendChild(restore); btns.appendChild(dl); btns.appendChild(del);
     meta.appendChild(btns);
     card.appendChild(meta);
     grid.appendChild(card);
@@ -1265,9 +1326,10 @@ function renderTemplates() {
       state.ratio = tpl.ratio;
       selectedLayerId = state.layers[state.layers.length - 1].id;
       save(); refresh();
+      showToast(s.doneLoaded);
     };
     const del = h('button', 'pill sm red', s.del);
-    del.onclick = () => { delete state.templates[name]; save(); refresh(); };
+    del.onclick = () => confirmDeleteModal(name, () => { delete state.templates[name]; save(); refresh(); });
     row.appendChild(load); row.appendChild(del);
     list.appendChild(row);
   }
@@ -1299,9 +1361,13 @@ function renderHistory() {
       state.layers.push(nl);
       selectedLayerId = nl.id;
       save(); refresh();
+      showToast(s.doneAdded);
     };
     const del = h('button', 'pill sm red', s.histDel);
-    del.onclick = () => { state.history = state.history.filter((x) => x.id !== item.id); save(); refresh(); };
+    del.onclick = () => confirmDeleteModal(item.theme || '', () => {
+      state.history = state.history.filter((x) => x.id !== item.id);
+      save(); refresh();
+    });
     btns.appendChild(put); btns.appendChild(del);
     box.appendChild(btns);
     card.appendChild(box);
