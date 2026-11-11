@@ -19,8 +19,9 @@
  *     history: HistoryItem[],    // アプリ内生成の履歴
  *   }
  *   Layer 共通: { id, type, name, visible, opacity }
- *     art:   { imageId|null, fit:'white-key'|'edge-mask'|'full-cut'|'band-only',
- *              borderPct (縁の幅%), bandPct (帯の高さ%), cutCenter }
+ *     art:   { imageId|null, fit:'white-key'|'edge-mask'|'full-cut'|'band-only'|'as-is'|'window-only',
+ *              borderPct (縁の幅%), bandPct (帯の高さ%), cutCenter,
+ *              winTol (窓抜きの色の許容差), winL/winT/winR/winB (窓矩形の四辺の余白%) }
  *     motif: { imageId|null, pos (8位置), sizePct, keyout }
  *     base:  { template, theme, frameColor, bandColor, accentColor,
  *              borderPct, bandPct, density, motif }
@@ -34,7 +35,7 @@
 
 'use strict';
 
-const SHEET_VERSION = 'v0.13';
+const SHEET_VERSION = 'v0.14';
 const STORE_KEY = 'encadraFrameMaker.v1';
 const GALLERY_LIMIT = 60;
 
@@ -93,7 +94,8 @@ function defaultBase() {
 }
 function defaultArt() {
   return { id: uid(), type: 'art', name: '', visible: true, opacity: 100,
-    imageId: null, fit: 'white-key', borderPct: 8, bandPct: 15, cutCenter: true };
+    imageId: null, fit: 'white-key', borderPct: 8, bandPct: 15, cutCenter: true,
+    winTol: 32, winL: 10, winT: 15, winR: 10, winB: 15 };
 }
 function defaultMotif() {
   return { id: uid(), type: 'motif', name: '', visible: true, opacity: 100,
@@ -178,8 +180,11 @@ const STR = {
     motifEmpty: 'モチーフ画像が入っていません。透過PNG、または白背景の画像（自動で切り抜きます）を入れてください。',
     putImage: '画像を入れる', putMotif: 'モチーフ画像を入れる', replace: '画像を差し替える', remove: '画像を外す',
     fit: 'はめ方',
-    fits: { 'white-key': '白地を透過化（自動・推奨）', 'edge-mask': '縁マスク（縁だけ残す）', 'full-cut': '全面＋中央くり抜き', 'band-only': '帯のみ（下帯）' },
+    fits: { 'white-key': '白地を透過化（自動・推奨）', 'edge-mask': '縁マスク（縁だけ残す）', 'full-cut': '全面＋中央くり抜き', 'band-only': '帯のみ（下帯）', 'as-is': 'そのまま（透過を活かす）', 'window-only': '窓だけ抜く（白は残す）' },
     fitKeyNote: '白に近い部分をなめらかに透過化します。長方形で切り取らないので、モチーフが途中で切れません。中央が白く空いた生成画像にそのまま効きます。',
+    fitAsIsNote: '画像の透過をそのまま活かします。窓抜き済みのフレーム画像（白地が不透明で、窓だけ透明なもの）用です。白地を透過化すると白枠まで消えてしまうので、このはめ方を使ってください。',
+    fitWindowNote: '白地フレーム用です。中央の窓とつながっている部分だけを抜くので、白地と、離れている文字や飾りは残ります。うまく抜けないときは、下の四辺の余白で窓の位置を調整してください（その場合は矩形で抜きます）。',
+    winTol: '窓色の許容差', winL: '窓の左余白', winT: '窓の上余白', winR: '窓の右余白', winB: '窓の下余白',
     edgeW: '縁の幅', bandH: '帯の高さ', cutCenter: '中央（内側60%）をくり抜く',
     pos: '配置', size: '大きさ', keyout: '白地を透過化',
     posNames: { 'top-left': '左上', 'top-center': '上中央', 'top-right': '右上', 'mid-left': '左中央', 'mid-right': '右中央', 'bottom-left': '左下', 'bottom-center': '下中央', 'bottom-right': '右下' },
@@ -240,8 +245,11 @@ const STR = {
     motifEmpty: 'No motif image yet. Use a transparent PNG, or a white-background image (it will be cut out automatically).',
     putImage: 'Add image', putMotif: 'Add motif image', replace: 'Replace image', remove: 'Remove image',
     fit: 'Fit',
-    fits: { 'white-key': 'Key out white (auto, recommended)', 'edge-mask': 'Edge mask (keep edges only)', 'full-cut': 'Full + center cutout', 'band-only': 'Band only (bottom)' },
+    fits: { 'white-key': 'Key out white (auto, recommended)', 'edge-mask': 'Edge mask (keep edges only)', 'full-cut': 'Full + center cutout', 'band-only': 'Band only (bottom)', 'as-is': 'As-is (keep transparency)', 'window-only': 'Window only (keep the white)' },
     fitKeyNote: 'Near-white areas fade smoothly into transparency. Nothing is cut by a rectangle, so motifs are never clipped. Works directly on generated images with a white center.',
+    fitAsIsNote: 'Keeps the image transparency exactly as it is. For frame images whose window is already cut out (opaque white body, transparent window only). Keying out white would erase the white frame itself, so use this fit for those.',
+    fitWindowNote: 'For white-bodied frames. Only the area connected to the center window is removed, so the white body and separate text or ornaments stay. If it does not cut cleanly, adjust the four margins below to position the window (a rectangle cut is then used).',
+    winTol: 'Window color tolerance', winL: 'Window left margin', winT: 'Window top margin', winR: 'Window right margin', winB: 'Window bottom margin',
     edgeW: 'Edge width', bandH: 'Band height', cutCenter: 'Cut out the center (inner 60%)',
     pos: 'Position', size: 'Size', keyout: 'Key out white',
     posNames: { 'top-left': 'Top left', 'top-center': 'Top center', 'top-right': 'Top right', 'mid-left': 'Middle left', 'mid-right': 'Middle right', 'bottom-left': 'Bottom left', 'bottom-center': 'Bottom center', 'bottom-right': 'Bottom right' },
@@ -453,6 +461,8 @@ function layerCanvas(layer, W, H) {
     else if (layer.fit === 'edge-mask') { img = FrameEngine.applyKeyout(img); img = FrameEngine.applyEdgeMask(img, { bandRatio: layer.borderPct / 100, bottomRatio: layer.bandPct / 100 }); }
     else if (layer.fit === 'full-cut') { img = FrameEngine.applyKeyout(img); if (layer.cutCenter) img = FrameEngine.applyCenterCutout(img); }
     else if (layer.fit === 'band-only') { img = FrameEngine.applyKeyout(img); img = FrameEngine.applyBandOnly(img, { side: 'bottom', bandRatio: layer.bandPct / 100 }); }
+    else if (layer.fit === 'as-is') { /* 画像自身のアルファをそのまま活かす（加工しない） */ }
+    else if (layer.fit === 'window-only') { FrameEngine.applyWindowOnly(img, { tolerance: layer.winTol ?? 32, margins: { left: (layer.winL ?? 10) / 100, top: (layer.winT ?? 15) / 100, right: (layer.winR ?? 10) / 100, bottom: (layer.winB ?? 15) / 100 } }); }
     ctx.putImageData(img, 0, 0);
   } else if (layer.type === 'motif') {
     if (!im || !imgReady(layer.imageId)) return c;
@@ -859,6 +869,26 @@ function renderLayerList() {
   });
 }
 
+
+/* v0.14: 取り込んだ画像に透明部分が一定割合あれば「そのまま（透過を活かす）」を推奨する */
+function autoFitAsIs(layer, dataURL) {
+  const im = new Image();
+  im.onload = () => {
+    try {
+      const maxSide = 256;
+      const scale = Math.min(1, maxSide / Math.max(im.naturalWidth, im.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(im.naturalWidth * scale));
+      c.height = Math.max(1, Math.round(im.naturalHeight * scale));
+      const ctx = c.getContext('2d');
+      ctx.drawImage(im, 0, 0, c.width, c.height);
+      const ratio = FrameEngine.transparentRatio(ctx.getImageData(0, 0, c.width, c.height));
+      if (ratio >= 0.05 && layer.fit === 'white-key') { layer.fit = 'as-is'; save(); refresh(); }
+    } catch (e) { /* 推奨は補助機能なので失敗しても取り込みは続ける */ }
+  };
+  im.src = dataURL;
+}
+
 /* ================= レイヤー編集 ================= */
 
 function pickImage(layer, kind) {
@@ -869,6 +899,7 @@ function pickImage(layer, kind) {
     if (!f) return;
     const data = await downscaleDataURL(await fileToDataURL(f));
     layer.imageId = addImageData(data);
+    if (layer.type === 'art') autoFitAsIs(layer, data);
     save(); refresh();
   };
   input.click();
@@ -946,6 +977,15 @@ function renderEditor() {
     }
     if (layer.fit === 'full-cut') {
       toggleField(body, s.cutCenter, layer.cutCenter, (v) => { layer.cutCenter = v; save(); refresh(); });
+    }
+    if (layer.fit === 'as-is') body.appendChild(h('p', 'guide mt8', s.fitAsIsNote));
+    if (layer.fit === 'window-only') {
+      body.appendChild(h('p', 'guide mt8', s.fitWindowNote));
+      sliderField(body, s.winTol, 0, 80, 1, layer.winTol ?? 32, '', (v, commit) => { layer.winTol = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
+      sliderField(body, s.winL, 0, 45, 1, layer.winL ?? 10, '%', (v, commit) => { layer.winL = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
+      sliderField(body, s.winT, 0, 45, 1, layer.winT ?? 15, '%', (v, commit) => { layer.winT = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
+      sliderField(body, s.winR, 0, 45, 1, layer.winR ?? 10, '%', (v, commit) => { layer.winR = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
+      sliderField(body, s.winB, 0, 45, 1, layer.winB ?? 15, '%', (v, commit) => { layer.winB = v; if (commit) { save(); refresh(); } else { refreshPreview(); } });
     }
     requestBlock(ed, layer, 'art');
   }
@@ -1278,6 +1318,7 @@ window.FrameMakerAPI = {
     const id = addImageData(dataURL);
     const layer = kind === 'motif' ? defaultMotif() : defaultArt();
     layer.imageId = id;
+    if (kind !== 'motif') autoFitAsIs(layer, dataURL);
     state.layers.push(layer);
     selectedLayerId = layer.id;
     save(); refresh();
