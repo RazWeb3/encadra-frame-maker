@@ -35,7 +35,7 @@
 
 'use strict';
 
-const SHEET_VERSION = 'v0.18';
+const SHEET_VERSION = 'v0.19';
 const STORE_KEY = 'encadraFrameMaker.v1';
 const GALLERY_LIMIT = 60;
 
@@ -82,6 +82,63 @@ const FONT_STACKS = {
   round: '"Hiragino Maru Gothic ProN", "M PLUS Rounded 1c", "Hiragino Kaku Gothic ProN", sans-serif',
 };
 const MOTIF_POS = ['top-left', 'top-center', 'top-right', 'mid-left', 'mid-right', 'bottom-left', 'bottom-center', 'bottom-right'];
+
+/* ================= テイスト（v0.19） =================
+   AI生成アートの画風。12種類に絞り、各テイストに依頼文へ入れる指定文と、
+   サムネイル見本の配色（同じ題材・構図の見本を、この配色で描く）を持つ。
+   既定は watercolor。選択はアート層ごとに保存する。 */
+const TASTES = [
+  { id: 'watercolor', ja: '水彩', en: 'Watercolor',
+    jaPhrase: '水彩画タッチ。色がにじみ、透明感のあるやわらかい表現で',
+    enPhrase: 'in a watercolor style, with soft bleeding colors and a translucent, gentle feel',
+    colors: ['#e8a0b4', '#8fc1e9', '#a8d5a2'], bg: '#fdf3ec' },
+  { id: 'flat', ja: 'フラット', en: 'Flat illustration',
+    jaPhrase: 'フラットイラスト。影のない平たい色面と、はっきりした配色で',
+    enPhrase: 'in a flat illustration style, with solid color shapes, no shading, and a bold palette',
+    colors: ['#ef6351', '#2a9d8f', '#f7c548'], bg: '#eef6f6' },
+  { id: 'botanical', ja: 'ボタニカル', en: 'Botanical',
+    jaPhrase: 'ボタニカル。葉や花の植物モチーフを中心に、自然で爽やかな表現で',
+    enPhrase: 'in a botanical style centered on leaves and flowers, fresh and natural',
+    colors: ['#2f7d4f', '#57a773', '#cfe3a8'], bg: '#eef7ee' },
+  { id: 'pastel', ja: 'パステル・かわいい', en: 'Pastel cute',
+    jaPhrase: 'パステルカラーで、丸みのある可愛らしい表現で',
+    enPhrase: 'in pastel colors, rounded and cute',
+    colors: ['#ffb7d5', '#b7d8ff', '#bff0d2'], bg: '#fff0f6' },
+  { id: 'retro', ja: 'レトロ', en: 'Retro',
+    jaPhrase: '1970年代レトロ。くすんだオレンジ・茶・黄土色と、懐かしい質感で',
+    enPhrase: 'in a 1970s retro style, with muted orange, brown and ochre and a nostalgic texture',
+    colors: ['#e76f51', '#f4a261', '#a2674a'], bg: '#f7ead9' },
+  { id: 'wa', ja: '和風', en: 'Japanese',
+    jaPhrase: '和風。日本の伝統文様と、落ち着いた色づかいで',
+    enPhrase: 'in a Japanese style, with traditional patterns and calm colors',
+    colors: ['#315a8c', '#c73e3a', '#d9b45b'], bg: '#eef1f6' },
+  { id: 'nordic', ja: '北欧', en: 'Scandinavian',
+    jaPhrase: '北欧デザイン。幾何学模様と、生成り・マスタード・グレーの配色で',
+    enPhrase: 'in a Scandinavian design style, with geometric patterns in ecru, mustard and gray',
+    colors: ['#e9b949', '#6b7a7a', '#b5542d'], bg: '#f4f1e8' },
+  { id: 'line', ja: 'ミニマル線画', en: 'Minimal line art',
+    jaPhrase: 'ミニマルな線画。細い線だけで、軽やかな表現で',
+    enPhrase: 'in minimal line art, with thin lines only, light and airy',
+    colors: ['#333333', '#777777', '#aaaaaa'], bg: '#ffffff' },
+  { id: 'elegant', ja: 'エレガント', en: 'Elegant',
+    jaPhrase: 'エレガント。金色と濃色で、上品で高級感のある表現で',
+    enPhrase: 'in an elegant style, with gold and deep colors, refined and luxurious',
+    colors: ['#c9a227', '#7a5c14', '#2c2c34'], bg: '#f7f2df' },
+  { id: 'pop', ja: 'ポップ・ステッカー', en: 'Pop sticker',
+    jaPhrase: 'ポップなステッカー風。太い輪郭線と、元気な原色で',
+    enPhrase: 'in a pop sticker style, with thick outlines and vivid primary colors',
+    colors: ['#ff5964', '#ffe93d', '#38618c'], bg: '#fffbe0' },
+  { id: 'crayon', ja: '手描き・クレヨン', en: 'Hand-drawn crayon',
+    jaPhrase: 'クレヨンの手描き風。ざらっとした質感と、温かみのある表現で',
+    enPhrase: 'in a hand-drawn crayon style, with a rough texture and warmth',
+    colors: ['#ff8fab', '#4dabf7', '#ffd43b'], bg: '#fff8e1' },
+  { id: 'photo', ja: '写真風', en: 'Photorealistic',
+    jaPhrase: '写真のようにリアルな質感で',
+    enPhrase: 'in a photorealistic style with lifelike textures',
+    colors: ['#8ec9eb', '#f7d08a', '#6a9e5f'], bg: '#eaf4fb' },
+];
+const DEFAULT_TASTE = 'watercolor';
+function tasteById(id) { return TASTES.find((x) => x.id === id) || TASTES[0]; }
 const TYPE_DOT = { art: '#d946ef', motif: '#0ea5e9', base: '#d97706', text: '#059669' };
 
 let uidCounter = 0;
@@ -93,7 +150,7 @@ function defaultBase() {
     accentColor: '#f4b942', borderPct: 1.4, bandPct: 15, density: 50, motif: 'star' };
 }
 function defaultArt() {
-  return { id: uid(), type: 'art', name: '', visible: true, opacity: 100,
+  return { id: uid(), type: 'art', name: '', visible: true, opacity: 100, taste: DEFAULT_TASTE,
     imageId: null, fit: 'white-key', borderPct: 8, bandPct: 15, cutCenter: true,
     winTol: 32, winL: 10, winT: 15, winR: 10, winB: 15 };
 }
@@ -162,7 +219,7 @@ const STR = {
     bgs: { checker: 'チェッカー', dummy: 'ダミー写真', white: '白', black: '黒' },
     exportTitle: '書き出しと検証',
     vSize: (s) => `実寸ピクセルが比率どおり (${s})`,
-    vCenter: '中央領域（内側60%）が完全透過',
+    vCenter: '中央領域（内側60%）が完全透過', vCenterWarn: (px) => `中央領域に濃いピクセルがわずかにあります（${px}px・許容範囲内）`,
     vCenterNa: '中央領域（内側60%）が完全透過（対象外）',
     vWhite: '白地フレーム: 窓内が透過し、白地と離れた装飾が残っている',
     vDraw: 'フレームの描画あり',
@@ -190,7 +247,9 @@ const STR = {
     edgeW: '縁の幅', bandH: '帯の高さ', cutCenter: '中央（内側60%）をくり抜く',
     pos: '配置', size: '大きさ', keyout: '白地を透過化',
     posNames: { 'top-left': '左上', 'top-center': '上中央', 'top-right': '右上', 'mid-left': '左中央', 'mid-right': '右中央', 'bottom-left': '左下', 'bottom-center': '下中央', 'bottom-right': '右下' },
-    reqArt: 'アート層の依頼文', reqMotif: 'モチーフ層の依頼文',
+    reqArt: 'アート層の依頼文', reqMotif: 'モチーフ層の依頼文', tasteLabel: 'テイスト',
+    genMismatch: '生成画像の比率が選択中の比率と一致しなかったため、履歴に入れませんでした',
+    warnTitle: '検証は不合格です', warnBody: '推奨の形ではありません。不合格の項目があるままダウンロードしますか？', warnDownload: 'このままダウンロード',
     themePh: 'テーマ（例：旅行・猫・誕生日）',
     copyReq: 'Museへの依頼文をコピー', copied: 'コピーしました',
     mainText: 'メインテキスト', subText: 'サブテキスト', textPos: 'テキスト位置', align: '揃え',
@@ -222,7 +281,7 @@ const STR = {
     savedFlash: ' · 自動保存しました',
     version: '対応している指示書の版: ',
     footer: '書き出したPNGは Encadra のカスタムフレームに登録して使います。比率ごとに別に作るのが基本です。',
-    reqArtText: (theme, ratio) => `Encadraのカスタムフレーム用のアート画像を1枚生成してください。\nテーマ: ${theme}\n- 比率は ${ratio}（フレームの比率に合わせる）\n- モチーフや飾りは画像の縁の周りにだけ配置し、中央は白一色で空ける\n- モチーフは端で切らず、全体が入るように描く（端から余白を取り、飾りは縁の帯の内側に収める）\n- 画像の中に文字は入れない`,
+    reqArtText: (theme, ratio, taste) => `Encadraのカスタムフレーム用のアート画像を1枚生成してください。\nテーマ: ${theme}\nテイスト: ${taste.ja}（${taste.jaPhrase}）\n- 比率は ${ratio}。生成画像の寸法の比率を、フレームの比率と正確に一致させる\n- モチーフや飾りは画像の縁の周りにだけ配置し、中央は白一色で空ける\n- 絵柄は画像の端まで届かせ、絵の外側に余白（無地の帯）を作らない\n- モチーフは端で切らず、全体が入るように描く\n- 画像の中に文字は入れない`,
     reqMotifText: (theme) => `Encadraのカスタムフレーム用のモチーフ画像を1枚生成してください。\nテーマ: ${theme}\n- モチーフは単体で、白一色の背景の上に大きく作る（後から切り抜く前提。透過PNGで作れる場合はそれでもよい）\n- 画像の中に文字は入れない`,
   },
   en: {
@@ -232,7 +291,7 @@ const STR = {
     bgs: { checker: 'Checker', dummy: 'Dummy photo', white: 'White', black: 'Black' },
     exportTitle: 'Export & validation',
     vSize: (s) => `Exact pixels match the ratio (${s})`,
-    vCenter: 'Center area (inner 60%) fully transparent',
+    vCenter: 'Center area (inner 60%) fully transparent', vCenterWarn: (px) => `A few strong pixels in the center area (${px}px, within tolerance)`,
     vCenterNa: 'Center area (inner 60%) fully transparent (not applicable)',
     vWhite: 'White frame: window transparent, white body and separate ornaments remain',
     vDraw: 'Frame has drawn content',
@@ -260,7 +319,9 @@ const STR = {
     edgeW: 'Edge width', bandH: 'Band height', cutCenter: 'Cut out the center (inner 60%)',
     pos: 'Position', size: 'Size', keyout: 'Key out white',
     posNames: { 'top-left': 'Top left', 'top-center': 'Top center', 'top-right': 'Top right', 'mid-left': 'Middle left', 'mid-right': 'Middle right', 'bottom-left': 'Bottom left', 'bottom-center': 'Bottom center', 'bottom-right': 'Bottom right' },
-    reqArt: 'Request text (art layer)', reqMotif: 'Request text (motif layer)',
+    reqArt: 'Request text (art layer)', reqMotif: 'Request text (motif layer)', tasteLabel: 'Taste',
+    genMismatch: 'The generated image ratio did not match the selected ratio, so it was not added to the history',
+    warnTitle: 'Validation did not pass', warnBody: 'This is not the recommended form. Download anyway with failing items?', warnDownload: 'Download anyway',
     themePh: 'Theme (e.g. travel, cat, birthday)',
     copyReq: 'Copy request text for Muse', copied: 'Copied',
     mainText: 'Main text', subText: 'Sub text', textPos: 'Text position', align: 'Align',
@@ -292,7 +353,7 @@ const STR = {
     savedFlash: ' · Auto-saved',
     version: 'Instruction sheet version: ',
     footer: 'Register exported PNGs as custom frames in Encadra. Make one frame per ratio.',
-    reqArtText: (theme, ratio) => `Generate one art image for an Encadra custom frame.\nTheme: ${theme}\n- Aspect ratio ${ratio} (match the frame ratio)\n- Place motifs and decorations only around the edges; leave the center pure white and empty\n- Draw every motif fully inside the image with margins from the edges\n- Do not put any text in the image`,
+    reqArtText: (theme, ratio, taste) => `Generate one art image for an Encadra custom frame.\nTheme: ${theme}\nTaste: ${taste.en} (${taste.enPhrase})\n- Aspect ratio ${ratio}: make the generated image dimensions match the frame ratio exactly\n- Place motifs and decorations only around the edges; leave the center pure white and empty\n- Let the artwork reach the edges of the image; do not leave a blank margin outside the artwork\n- Draw every motif fully, never clipped at the edges\n- Do not put any text in the image`,
     reqMotifText: (theme) => `Generate one motif image for an Encadra custom frame.\nTheme: ${theme}\n- A single motif, large, on a pure white background (it will be cut out later; a transparent PNG is also fine)\n- Do not put any text in the image`,
   },
 };
@@ -379,7 +440,8 @@ function drawDummyScene(ctx, W, H) {
 }
 
 /* アプリ内生成（お試し）: 縁に装飾が集まり中央が白く空いた絵を、手続き的に描く */
-function generateArtCanvas(theme, W, H) {
+function generateArtCanvas(theme, W, H, tasteId) {
+  const taste = tasteById(tasteId);
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const ctx = c.getContext('2d');
@@ -389,7 +451,7 @@ function generateArtCanvas(theme, W, H) {
   for (const ch of (theme || '')) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
   const rnd = () => { seed = (seed * 1103515245 + 12345) >>> 0; return (seed >>> 8) / 16777216; };
   const preset = presets[seed % presets.length] || THEME_PRESETS.travel;
-  const colors = [preset.frame, preset.accent, preset.band, '#7fb069', '#40607a'];
+  const colors = [...taste.colors, preset.frame, preset.accent];
   const bandX = W * 0.16, bandY = H * 0.16;
   const n = 46;
   for (let i = 0; i < n; i++) {
@@ -401,7 +463,7 @@ function generateArtCanvas(theme, W, H) {
     else { x = W - rnd() * bandX; y = rnd() * H; }
     const s = (0.02 + rnd() * 0.035) * Math.min(W, H);
     ctx.fillStyle = colors[Math.floor(rnd() * colors.length)];
-    ctx.globalAlpha = 0.75 + rnd() * 0.25;
+    ctx.globalAlpha = taste.id === 'watercolor' ? 0.45 + rnd() * 0.3 : taste.id === 'line' ? 0.55 + rnd() * 0.2 : 0.8 + rnd() * 0.2;
     const shape = Math.floor(rnd() * 3);
     ctx.beginPath();
     if (shape === 0) ctx.arc(x, y, s / 2, 0, Math.PI * 2);
@@ -812,7 +874,7 @@ function refreshPreview() {
   const rows = [
     { ok: true, label: t().vSize(`${size.width} × ${size.height}`) },
     v.centerApplicable
-      ? { ok: v.centerOk, label: t().vCenter }
+      ? { ok: v.centerOk, warn: v.centerWarning, label: v.centerWarning ? t().vCenterWarn(v.centerStrongPx.toLocaleString()) : t().vCenter }
       : { na: true, label: t().vCenterNa },
     { ok: v.drawingOk, label: t().vDraw },
   ];
@@ -821,7 +883,7 @@ function refreshPreview() {
   vr.innerHTML = '';
   for (const r of rows) {
     const row = h('div', 'vrow');
-    row.appendChild(h('span', 'badge ' + (r.na ? 'na' : r.ok ? 'ok' : 'ng'), r.na ? '—' : r.ok ? '✓' : '✗'));
+    row.appendChild(h('span', 'badge ' + (r.na ? 'na' : r.warn ? 'warn' : r.ok ? 'ok' : 'ng'), r.na ? '—' : r.warn ? '!' : r.ok ? '✓' : '✗'));
     row.appendChild(h('span', '', r.label));
     vr.appendChild(row);
   }
@@ -926,10 +988,31 @@ function pickImage(layer, kind) {
   input.click();
 }
 
+function tasteThumbSVG(tst) {
+  const [c1, c2, c3] = tst.colors;
+  const flower = (cx, cy, col) => `<circle cx='${cx}' cy='${cy}' r='7' fill='${col}'/><circle cx='${cx - 6}' cy='${cy + 3}' r='5' fill='${col}' opacity='.7'/><circle cx='${cx + 6}' cy='${cy + 3}' r='5' fill='${col}' opacity='.7'/>`;
+  return `<svg viewBox='0 0 60 44' xmlns='http://www.w3.org/2000/svg'><rect width='60' height='44' fill='${tst.bg}'/>${flower(9, 9, c1)}${flower(51, 9, c2)}${flower(9, 35, c3)}${flower(51, 35, c1)}<rect x='17' y='11' width='26' height='22' fill='#fff'/><rect x='17' y='11' width='6.5' height='5.5' fill='#ddd'/><rect x='23.5' y='16.5' width='6.5' height='5.5' fill='#ddd'/><rect x='30' y='11' width='6.5' height='5.5' fill='#ddd'/><rect x='36.5' y='16.5' width='6.5' height='5.5' fill='#ddd'/><rect x='17' y='22' width='6.5' height='5.5' fill='#ddd'/><rect x='23.5' y='27.5' width='6.5' height='5.5' fill='#ddd'/><rect x='30' y='22' width='6.5' height='5.5' fill='#ddd'/><rect x='36.5' y='27.5' width='6.5' height='5.5' fill='#ddd'/></svg>`;
+}
+
 function requestBlock(parent, layer, kind) {
   const s = t();
   const box = h('div', 'reqBlock');
   box.appendChild(h('h3', '', kind === 'art' ? s.reqArt : s.reqMotif));
+  if (kind === 'art') {
+    box.appendChild(h('div', 'fldLabel', s.tasteLabel));
+    const grid = h('div', 'tasteGrid');
+    for (const tst of TASTES) {
+      const b = h('button', 'tasteBtn' + (layer.taste === tst.id ? ' on' : ''));
+      b.type = 'button';
+      const th = h('span', 'tasteThumb');
+      th.innerHTML = tasteThumbSVG(tst);
+      b.appendChild(th);
+      b.appendChild(h('span', 'tasteName', state.lang === 'en' ? tst.en : tst.ja));
+      b.onclick = () => { layer.taste = tst.id; save(); refresh(); };
+      grid.appendChild(b);
+    }
+    box.appendChild(grid);
+  }
   const input = h('input');
   input.type = 'text';
   input.placeholder = s.themePh;
@@ -945,7 +1028,7 @@ function requestBlock(parent, layer, kind) {
   const done = h('div', 'copied', s.copied);
   done.style.display = 'none';
   btn.onclick = async () => {
-    const text = kind === 'art' ? s.reqArtText(state.theme, state.ratio) : s.reqMotifText(state.theme);
+    const text = kind === 'art' ? s.reqArtText(state.theme, state.ratio, tasteById(layer.taste)) : s.reqMotifText(state.theme);
     area.value = text; area.style.display = '';
     try { await navigator.clipboard.writeText(text); done.style.display = ''; } catch (e) { area.select(); }
   };
@@ -1173,13 +1256,13 @@ function recordGallery(ratio, blob) {
   });
 }
 
-async function exportOne(ratio) {
+async function exportOne(ratio, force = false) {
   const { width: W, height: H } = FrameEngine.SIZES[ratio];
   const keep = state.ratio;
   state.ratio = ratio;
   const v = currentValidation(W, H);
   state.ratio = keep;
-  if (!v.ok) { refresh(); return null; }
+  if (!v.ok && !force) { refresh(); return null; }
   const blob = await canvasBlob(compose(W, H));
   await recordGallery(ratio, blob);
   save();
@@ -1187,25 +1270,67 @@ async function exportOne(ratio) {
   return { blob, fileName: FrameEngine.fileNameFor(ratio, state.theme) };
 }
 
+/* 検証が不合格でも、警告を確認すればダウンロードできる（v0.19）。
+   検証表示そのものは合否を正直に出し、合格に見せかけることはしない。 */
+function warnExportModal(onConfirm) {
+  const s = t();
+  const old = document.getElementById('warnModal');
+  if (old) old.remove();
+  const overlay = h('div', 'modalOverlay');
+  overlay.id = 'warnModal';
+  const card = h('div', 'modalCard');
+  card.appendChild(h('h3', '', s.warnTitle));
+  card.appendChild(h('div', 'modalTarget', s.warnBody));
+  const btns = h('div', 'modalBtns');
+  const yes = h('button', 'pill on', s.warnDownload);
+  const no = h('button', 'pill', s.cancel);
+  const close = () => overlay.remove();
+  no.onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  yes.onclick = () => { close(); onConfirm(); };
+  btns.appendChild(yes); btns.appendChild(no);
+  card.appendChild(btns);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
+function validationFor(ratio) {
+  const { width: W, height: H } = FrameEngine.SIZES[ratio];
+  const keep = state.ratio;
+  state.ratio = ratio;
+  const v = currentValidation(W, H);
+  state.ratio = keep;
+  return v;
+}
+
 async function onExportOne() {
   const btn = $('exportOne');
-  btn.disabled = true; btn.textContent = t().exporting;
-  const r = await exportOne(state.ratio);
-  if (r) { downloadBlob(r.blob, r.fileName); showToast(t().doneExport); }
-  btn.disabled = false;
-  refresh();
+  const run = async (force) => {
+    btn.disabled = true; btn.textContent = t().exporting;
+    const r = await exportOne(state.ratio, force);
+    if (r) { downloadBlob(r.blob, r.fileName); showToast(t().doneExport); }
+    btn.disabled = false;
+    refresh();
+  };
+  if (validationFor(state.ratio).ok) { await run(false); return; }
+  warnExportModal(() => run(true));
 }
 async function onExportAll() {
   const btn = $('exportAll');
-  btn.disabled = true; btn.textContent = t().exporting;
-  const files = [];
-  for (const ratio of Object.keys(FrameEngine.SIZES)) {
-    const r = await exportOne(ratio);
-    if (r) files.push({ name: r.fileName, blob: r.blob });
-  }
-  if (files.length) { downloadBlob(await zipStore(files), 'encadra-frames.zip'); showToast(t().doneExport); }
-  btn.disabled = false;
-  refresh();
+  const run = async (force) => {
+    btn.disabled = true; btn.textContent = t().exporting;
+    const files = [];
+    for (const ratio of Object.keys(FrameEngine.SIZES)) {
+      const r = await exportOne(ratio, force);
+      if (r) files.push({ name: r.fileName, blob: r.blob });
+    }
+    if (files.length) { downloadBlob(await zipStore(files), 'encadra-frames.zip'); showToast(t().doneExport); }
+    btn.disabled = false;
+    refresh();
+  };
+  const anyInvalid = Object.keys(FrameEngine.SIZES).some((ratio) => !validationFor(ratio).ok);
+  if (!anyInvalid) { await run(false); return; }
+  warnExportModal(() => run(true));
 }
 
 /* ================= ギャラリー・テンプレート・生成履歴の描画 ================= */
@@ -1430,7 +1555,13 @@ function init() {
     btn.disabled = true; btn.textContent = t().generating;
     await new Promise((r) => setTimeout(r, 600));
     const { width, height } = FrameEngine.SIZES[state.ratio];
-    const c = generateArtCanvas(theme, Math.round(440 * width / Math.max(width, height) * (width >= height ? 1 : 1)), Math.round(440 * height / Math.max(width, height)));
+    const selArt = state.layers.find((l) => l.id === selectedLayerId && l.type === 'art');
+    const c = generateArtCanvas(theme, Math.round(440 * width / Math.max(width, height) * (width >= height ? 1 : 1)), Math.round(440 * height / Math.max(width, height)), selArt ? selArt.taste : DEFAULT_TASTE);
+    if (!FrameEngine.aspectRatioMatches(c.width, c.height, state.ratio)) {
+      btn.disabled = false; btn.textContent = t().genButton;
+      showToast(t().genMismatch);
+      return;
+    }
     const id = addImageData(c.toDataURL('image/png'));
     state.history.unshift({ id: uid(), ts: Date.now(), theme, imageId: id });
     save();

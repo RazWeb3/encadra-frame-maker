@@ -10,6 +10,10 @@
  * v0.17: for white-frame fits, §6 item 5 (validateWhiteFrame, window derived
  * from the actual transparent region) replaces item 2 (center cutout) as the
  * export gate; item 2 is not applicable to those designs.
+ * v0.19: aspectRatioMatches を追加。アプリ内生成の寸法保証（§5）と比較の
+ * ための関数で、生成比率テスト（tests/）の合否判定もこれを使う。
+ * v0.19: §6 項目2（中央の完全透過）の数え方を緩和。数えるのは alpha >= 128
+ * のピクセルだけとし、中央矩形の 1% 以下なら合格（警告付き）とする。
  *
  * 使い方 / How to use:
  * - ピクセル処理は { data: Uint8ClampedArray, width, height } 形式の
@@ -37,6 +41,20 @@ const RATIOS = Object.freeze(Object.keys(SIZES));
 
 /** Encadra 側の取り込み上限（長辺）。本仕様の寸法はすべてこの範囲内。 */
 const ENCADRA_MAX_LONG_EDGE = 4096;
+
+/**
+ * §5 寸法保証: 実寸 (width, height) の縦横比が、指定比率と一致するかを返す。
+ * ピクセル寸法そのものではなく比率で判定する（生成モデルの出力寸法は
+ * 環境で変わり得るため）。許容誤差は比率の相対 1% を既定とする。
+ * 生成比率テスト（tests/）の合否判定にもこの関数を使うこと。
+ */
+function aspectRatioMatches(width, height, ratio, tolerance = 0.01) {
+  const expected = SIZES[ratio];
+  if (!expected || !(width > 0) || !(height > 0)) return false;
+  const want = expected.width / expected.height;
+  const got = width / height;
+  return Math.abs(got - want) / want <= tolerance;
+}
 
 /* ------------------------------------------------------------------ */
 /* §4 中央の完全透過の対象矩形（中央内側60%）                            */
@@ -285,11 +303,16 @@ function fileNameFor(ratio, theme) {
 
 /** 矩形内の不透明ピクセル数（アルファ > 0 のピクセル）。 */
 function countOpaqueInRect(imageData, rect) {
+  return countAlphaInRect(imageData, rect, 1);
+}
+
+/** 矩形内で、アルファが minAlpha 以上のピクセル数。§6 項目2の緩和（v0.19）で使う。 */
+function countAlphaInRect(imageData, rect, minAlpha) {
   const { data, width } = imageData;
   let count = 0;
   for (let y = rect.y; y < rect.y + rect.height; y++) {
     for (let x = rect.x; x < rect.x + rect.width; x++) {
-      if (data[(y * width + x) * 4 + 3] > 0) count++;
+      if (data[(y * width + x) * 4 + 3] >= minAlpha) count++;
     }
   }
   return count;
@@ -422,7 +445,13 @@ function validateExport(imageData, ratio, motifImageData = null, options = {}) {
 
   const rect = centerRect(imageData.width, imageData.height);
   const centerOpaquePx = countOpaqueInRect(imageData, rect);
-  const centerOk = centerOpaquePx === 0;
+  /* §6 項目2（v0.19 緩和）: 数えるのは alpha >= 128 のピクセルだけ。
+     中央矩形の 1% 以下なら合格とし、1px でもあれば警告を併記する。
+     薄いピクセル（水彩のにじみ等）は写真を実質隠さないため数えない。 */
+  const centerStrongPx = countAlphaInRect(imageData, rect, 128);
+  const centerRatio = centerStrongPx / (rect.width * rect.height);
+  const centerOk = centerRatio <= 0.01;
+  const centerWarning = centerStrongPx > 0 && centerOk;
 
   const drawingOk = countOpaque(imageData) > 0;
 
@@ -442,6 +471,9 @@ function validateExport(imageData, ratio, motifImageData = null, options = {}) {
     sizeOk,
     centerApplicable: !whiteFrame,
     centerOk,
+    centerWarning,
+    centerStrongPx,
+    centerRatio,
     centerOpaquePx,
     drawingOk,
     whiteFrame,
@@ -493,10 +525,12 @@ const FrameEngine = {
   applyEdgeMask,
   applyCenterCutout,
   applyBandOnly,
+  aspectRatioMatches,
   slugifyTheme,
   fileNameFor,
   countOpaque,
   countOpaqueInRect,
+  countAlphaInRect,
   findWindow,
   validateWhiteFrame,
   validateExport,

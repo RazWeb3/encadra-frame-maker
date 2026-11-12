@@ -55,7 +55,7 @@
   .sizeLine { font-size: 12px; color: var(--dim); margin-top: 8px; }
   .vrow { display: flex; gap: 8px; align-items: center; font-size: 14px; margin: 6px 0; }
   .badge { width: 20px; height: 20px; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex: none; }
-  .badge.ok { background: #059669; } .badge.ng { background: #dc2626; } .badge.na { background: var(--dim); }
+  .badge.ok { background: #059669; } .badge.ng { background: #dc2626; } .badge.na { background: var(--dim); } .badge.warn { background: #d97706; }
   .fname { font-size: 12px; color: var(--dim); margin-top: 12px; }
   .fname code { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
   .btnPrimary { width: 100%; border: none; border-radius: var(--radius); background: var(--accent); color: #fff; padding: 12px 16px; font-size: 16px; font-weight: 700; cursor: pointer; }
@@ -86,6 +86,14 @@
   .dashedBtn { width: 100%; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); padding: 12px 16px; font-size: 14px; font-weight: 600; cursor: pointer; color: inherit; }
   .reqBlock { border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); padding: 12px; margin-top: 16px; }
   .reqBlock h3 { font-size: 14px; font-weight: 700; margin: 0 0 8px; }
+  .fldLabel { font-size: 13px; font-weight: 600; margin: 4px 0 6px; }
+  .tasteGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+  @media (max-width: 560px) { .tasteGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .tasteBtn { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 6px; cursor: pointer; color: inherit; display: flex; flex-direction: column; gap: 4px; align-items: stretch; min-height: 44px; }
+  .tasteBtn.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .tasteThumb { display: block; border-radius: 6px; overflow: hidden; line-height: 0; }
+  .tasteThumb svg { width: 100%; height: auto; display: block; }
+  .tasteName { font-size: 11px; font-weight: 600; line-height: 1.3; text-align: center; }
   .copyBtn { width: 100%; margin-top: 8px; border: 1px solid var(--accent); background: transparent; color: var(--accent); border-radius: 8px; padding: 8px 12px; font-size: 14px; font-weight: 700; cursor: pointer; }
   .copied { font-size: 12px; font-weight: 600; color: #059669; margin-top: 6px; }
   .swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
