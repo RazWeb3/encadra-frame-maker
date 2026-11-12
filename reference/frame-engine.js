@@ -7,6 +7,9 @@
  * export sizes, the white key-out formula, art-layer fit masks (including the
  * v0.14 white-frame fits: as-is alpha and window-only flood fill), filename rules,
  * and the export validation checks (README §4 / §6).
+ * v0.17: for white-frame fits, §6 item 5 (validateWhiteFrame, window derived
+ * from the actual transparent region) replaces item 2 (center cutout) as the
+ * export gate; item 2 is not applicable to those designs.
  *
  * 使い方 / How to use:
  * - ピクセル処理は { data: Uint8ClampedArray, width, height } 形式の
@@ -302,23 +305,116 @@ function countOpaque(imageData) {
 }
 
 /**
- * 書き出し前の検証（§6の1〜3。4の合成チェックは目視用なので含めない）。
+ * 窓の検出（§6の5、白地フレーム用）: 透明ピクセル（アルファ ≤ threshold）の
+ * 4方向連結成分のうち最大のものを「窓」として返す。中央の矩形は使わない。
+ * 「そのまま」のはめ方では、窓は画像自身の透明領域から求める。
+ * 「窓だけ抜く」では、はめ方が透過化した領域がそのまま窓になる。
+ * @returns {{rect:{x:number,y:number,width:number,height:number}, count:number, ratio:number, mask:Uint8Array}|null}
+ */
+function findWindow(imageData, threshold = 10) {
+  const { data, width, height } = imageData;
+  const n = width * height;
+  const seen = new Uint8Array(n);
+  const stack = [];
+  let best = null;
+  for (let s0 = 0; s0 < n; s0++) {
+    if (seen[s0] || data[s0 * 4 + 3] > threshold) continue;
+    let count = 0;
+    let minX = width, maxX = -1, minY = height, maxY = -1;
+    const members = [];
+    stack.length = 0;
+    stack.push(s0);
+    seen[s0] = 1;
+    while (stack.length) {
+      const idx = stack.pop();
+      members.push(idx);
+      count++;
+      const x = idx % width, y = Math.floor(idx / width);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      if (x > 0 && !seen[idx - 1] && data[(idx - 1) * 4 + 3] <= threshold) { seen[idx - 1] = 1; stack.push(idx - 1); }
+      if (x < width - 1 && !seen[idx + 1] && data[(idx + 1) * 4 + 3] <= threshold) { seen[idx + 1] = 1; stack.push(idx + 1); }
+      if (y > 0 && !seen[idx - width] && data[(idx - width) * 4 + 3] <= threshold) { seen[idx - width] = 1; stack.push(idx - width); }
+      if (y < height - 1 && !seen[idx + width] && data[(idx + width) * 4 + 3] <= threshold) { seen[idx + width] = 1; stack.push(idx + width); }
+    }
+    if (!best || count > best.count) {
+      best = { count, members, rect: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 } };
+    }
+  }
+  if (!best) return null;
+  const mask = new Uint8Array(n);
+  for (const idx of best.members) mask[idx] = 1;
+  return { rect: best.rect, count: best.count, ratio: best.count / n, mask };
+}
+
+/**
+ * 白地フレームの検証（§6の5）。対象は、はめ方「そのまま」「窓だけ抜く」の
+ * アート層（はめ方を適用した後の、その層だけの画像）に対して行う。
+ * 合格条件:
+ *   windowOk — 窓（実際の透明領域の最大連結成分）が存在し、その面積が
+ *              全体の2%以上98%以下であること。窓の内部は検出方法の定義により
+ *              すべてアルファ ≤ threshold（完全透過）である。
+ *   boardOk  — 窓の外に、完全不透明（アルファ ≥ 250）のピクセルが残っている
+ *              こと（白地と、窓とつながっていない文字・装飾が残っていることの
+ *              数値判定はこの条件が担う。最終確認は §6の4の目視で行う）。
+ * @returns {{ok:boolean, windowFound:boolean, windowOk:boolean, boardOk:boolean,
+ *            windowRect:object|null, windowRatio:number,
+ *            outsideOpaquePx:number, outsideFullOpaquePx:number}}
+ */
+function validateWhiteFrame(imageData, threshold = 10) {
+  const win = findWindow(imageData, threshold);
+  if (!win) {
+    return { ok: false, windowFound: false, windowOk: false, boardOk: false, windowRect: null, windowRatio: 0, outsideOpaquePx: 0, outsideFullOpaquePx: 0 };
+  }
+  const { data, width, height } = imageData;
+  let outsideOpaquePx = 0, outsideFullOpaquePx = 0;
+  for (let i = 0; i < width * height; i++) {
+    if (win.mask[i]) continue;
+    const a = data[i * 4 + 3];
+    if (a > 0) outsideOpaquePx++;
+    if (a >= 250) outsideFullOpaquePx++;
+  }
+  const windowOk = win.ratio >= 0.02 && win.ratio <= 0.98;
+  const boardOk = outsideFullOpaquePx > 0;
+  return {
+    ok: windowOk && boardOk,
+    windowFound: true,
+    windowOk,
+    boardOk,
+    windowRect: win.rect,
+    windowRatio: win.ratio,
+    outsideOpaquePx,
+    outsideFullOpaquePx,
+  };
+}
+
+/**
+ * 書き出し前の検証（§6の1〜3と5。4の合成チェックは目視用なので含めない）。
  *
  * @param imageData モチーフ層を除いた全レイヤーの合成結果
  * @param ratio     書き出す比率（'4:5' など）
  * @param motifImageData （任意）表示中のモチーフ層だけの合成結果。
  *        中央にかかっているかどうかだけを調べ、警告にする（合否には含めない）。
+ * @param options   （任意）{ whiteFrame: boolean, white: object|null }
+ *        whiteFrame が true のデザイン（はめ方「そのまま」「窓だけ抜く」の
+ *        アート層がある）では、項目2（中央の完全透過）は対象外とし、代わりに
+ *        項目5（options.white = validateWhiteFrame の結果）が合否を担う。
  * @returns {{
  *   ok: boolean,
  *   sizeOk: boolean,        // 1. 実寸が §4 の表と一致するか
- *   centerOk: boolean,      // 2. 中央内側60%が完全透過か
- *   centerOpaquePx: number, //    中央矩形内の不透明ピクセル数（0であるべき）
+ *   centerApplicable: boolean, // 2. 項目2がこのデザインに適用されるか
+ *   centerOk: boolean,      // 2. 中央内側60%が完全透過か（対象外の場合は参考値）
+ *   centerOpaquePx: number, //    中央矩形内の不透明ピクセル数
  *   drawingOk: boolean,     // 3. 不透明ピクセルが存在するか（空でないか）
+ *   whiteFrame: boolean,    // 5. 白地フレームのデザインかどうか
+ *   whiteOk: boolean|null,  // 5. validateWhiteFrame の結果（対象でない場合は null）
  *   motifWarning: boolean,  //    モチーフが中央にかかっているか（警告のみ）
  *   motifCenterPx: number
  * }}
  */
-function validateExport(imageData, ratio, motifImageData = null) {
+function validateExport(imageData, ratio, motifImageData = null, options = {}) {
   const expected = SIZES[ratio];
   if (!expected) throw new Error(`unknown ratio: ${ratio}`);
   const sizeOk =
@@ -335,12 +431,21 @@ function validateExport(imageData, ratio, motifImageData = null) {
     motifCenterPx = countOpaqueInRect(motifImageData, rect);
   }
 
+  const whiteFrame = !!options.whiteFrame;
+  const whiteOk = whiteFrame ? !!(options.white && options.white.ok) : null;
+  const ok = whiteFrame
+    ? sizeOk && drawingOk && whiteOk
+    : sizeOk && centerOk && drawingOk;
+
   return {
-    ok: sizeOk && centerOk && drawingOk,
+    ok,
     sizeOk,
+    centerApplicable: !whiteFrame,
     centerOk,
     centerOpaquePx,
     drawingOk,
+    whiteFrame,
+    whiteOk,
     motifWarning: motifCenterPx > 0,
     motifCenterPx,
   };
@@ -392,6 +497,8 @@ const FrameEngine = {
   fileNameFor,
   countOpaque,
   countOpaqueInRect,
+  findWindow,
+  validateWhiteFrame,
   validateExport,
   composeToCanvas,
 };
