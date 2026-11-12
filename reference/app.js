@@ -35,7 +35,7 @@
 
 'use strict';
 
-const SHEET_VERSION = 'v0.16';
+const SHEET_VERSION = 'v0.17';
 const STORE_KEY = 'encadraFrameMaker.v1';
 const GALLERY_LIMIT = 60;
 
@@ -163,6 +163,8 @@ const STR = {
     exportTitle: '書き出しと検証',
     vSize: (s) => `実寸ピクセルが比率どおり (${s})`,
     vCenter: '中央領域（内側60%）が完全透過',
+    vCenterNa: '中央領域（内側60%）が完全透過（対象外）',
+    vWhite: '白地フレーム: 窓内が透過し、白地と離れた装飾が残っている',
     vDraw: 'フレームの描画あり',
     motifWarn: (px) => `モチーフが中央にかかっています（${px}px）。意図した配置か確認してください（書き出しはできます）`,
     fnameLabel: 'ファイル名: ',
@@ -231,6 +233,8 @@ const STR = {
     exportTitle: 'Export & validation',
     vSize: (s) => `Exact pixels match the ratio (${s})`,
     vCenter: 'Center area (inner 60%) fully transparent',
+    vCenterNa: 'Center area (inner 60%) fully transparent (not applicable)',
+    vWhite: 'White frame: window transparent, white body and separate ornaments remain',
     vDraw: 'Frame has drawn content',
     motifWarn: (px) => `A motif overlaps the center (${px}px). Check it is intentional (export is still possible)`,
     fnameLabel: 'File name: ',
@@ -627,7 +631,15 @@ function compose(W, H, opts = {}) {
 function currentValidation(W, H) {
   const noMotif = compose(W, H, { excludeMotif: true });
   const img = noMotif.getContext('2d').getImageData(0, 0, W, H);
-  const v = FrameEngine.validateExport(img, state.ratio);
+  /* 白地フレーム（§6の5）: はめ方が「そのまま」「窓だけ抜く」のアート層があれば、
+     その層ごとに窓検証を行い、項目2（中央透過）の代わりに合否へ入れる */
+  const whiteLayers = state.layers.filter(l => l.visible && l.type === 'art' && (l.fit === 'as-is' || l.fit === 'window-only') && l.imageId);
+  let white = null;
+  if (whiteLayers.length) {
+    const results = whiteLayers.map(l => FrameEngine.validateWhiteFrame(layerCanvas(l, W, H).getContext('2d').getImageData(0, 0, W, H)));
+    white = { ...results[0], ok: results.every(r => r.ok) };
+  }
+  const v = FrameEngine.validateExport(img, state.ratio, null, { whiteFrame: whiteLayers.length > 0, white });
   let motifPx = 0;
   const motifOnly = compose(W, H, { onlyMotif: true });
   const mImg = motifOnly.getContext('2d').getImageData(0, 0, W, H);
@@ -799,14 +811,17 @@ function refreshPreview() {
   const v = currentValidation(pw, ph);
   const rows = [
     { ok: true, label: t().vSize(`${size.width} × ${size.height}`) },
-    { ok: v.centerOk, label: t().vCenter },
+    v.centerApplicable
+      ? { ok: v.centerOk, label: t().vCenter }
+      : { na: true, label: t().vCenterNa },
     { ok: v.drawingOk, label: t().vDraw },
   ];
+  if (v.whiteFrame) rows.push({ ok: v.whiteOk, label: t().vWhite });
   const vr = $('verifyRows');
   vr.innerHTML = '';
   for (const r of rows) {
     const row = h('div', 'vrow');
-    row.appendChild(h('span', 'badge ' + (r.ok ? 'ok' : 'ng'), r.ok ? '✓' : '✗'));
+    row.appendChild(h('span', 'badge ' + (r.na ? 'na' : r.ok ? 'ok' : 'ng'), r.na ? '—' : r.ok ? '✓' : '✗'));
     row.appendChild(h('span', '', r.label));
     vr.appendChild(row);
   }
