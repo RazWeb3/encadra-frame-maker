@@ -35,7 +35,7 @@
 
 'use strict';
 
-const SHEET_VERSION = 'v0.17';
+const SHEET_VERSION = 'v0.18';
 const STORE_KEY = 'encadraFrameMaker.v1';
 const GALLERY_LIMIT = 60;
 
