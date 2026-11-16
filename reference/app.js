@@ -35,7 +35,7 @@
 
 'use strict';
 
-const SHEET_VERSION = 'v0.21';
+const SHEET_VERSION = 'v0.22';
 const STORE_KEY = 'encadraFrameMaker.v1';
 const GALLERY_LIMIT = 60;
 
@@ -85,7 +85,7 @@ const MOTIF_POS = ['top-left', 'top-center', 'top-right', 'mid-left', 'mid-right
 
 /* ================= テイスト（v0.19） =================
    AI生成アートの画風。12種類に絞り、各テイストに依頼文へ入れる指定文と、
-   サムネイル見本の配色（窓辺の猫の一枚絵を、全テイスト同じ構図で、この配色と画風で描く）を持つ。
+   サムネイル見本は同梱画像 reference/assets/taste-<id>.png の実物を使う。この配色は、同梱画像を取得できない場合に生成で作るときの目安である。
    既定は watercolor。選択はアート層ごとに保存する。 */
 const TASTES = [
   { id: 'watercolor', ja: '水彩', en: 'Watercolor',
@@ -988,24 +988,8 @@ function pickImage(layer, kind) {
   input.click();
 }
 
-function tasteThumbSVG(tst) {
-  const [c1, c2, c3] = tst.colors;
-  const mode = tst.id === 'line' ? 'line' : tst.id === 'crayon' ? 'crayon' : tst.id === 'pop' ? 'pop'
-    : tst.id === 'watercolor' ? 'soft' : tst.id === 'photo' ? 'photo' : tst.id === 'elegant' ? 'elegant' : 'flat';
-  const soft = mode === 'soft' ? .55 : mode === 'crayon' ? .8 : 1;
-  let stroke = '';
-  if (mode === 'crayon') stroke = ` stroke-width='1.3' stroke-linejoin='round' stroke-dasharray='2.4 1.2'`;
-  else if (mode === 'pop') stroke = ` stroke='#26221f' stroke-width='1.5' stroke-linejoin='round'`;
-  else if (mode === 'elegant') stroke = ` stroke='#7a5c14' stroke-width='.6'`;
-  const F = (col, op) => mode === 'line'
-    ? `fill='none' stroke='#3a3a3a' stroke-width='.8'`
-    : `fill='${col}'${op && op !== 1 ? ` fill-opacity='${op}'` : ''}${mode === 'crayon' ? ` stroke='${col}'${stroke}` : stroke}`;
-  const garden = mode === 'photo'
-    ? `<defs><linearGradient id='phg' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='${c2}'/><stop offset='1' stop-color='${c3}'/></linearGradient></defs><rect x='7' y='5' width='46' height='34' fill='url(#phg)'/>`
-    : `<rect x='7' y='5' width='46' height='34' ${F(c3, .45)}/>`;
-  const scene = `${garden}<rect x='7' y='5' width='46' height='34' fill='none' stroke='${mode === 'line' ? '#3a3a3a' : c1}' stroke-width='${mode === 'pop' ? 1.6 : .9}'/><line x1='30' y1='5' x2='30' y2='39' stroke='${mode === 'line' ? '#3a3a3a' : c1}' stroke-width='.7'/><circle cx='45' cy='12' r='4' ${F(c2, soft)}/><ellipse cx='16' cy='36' rx='8' ry='4' ${F(c2, soft)}/><ellipse cx='44' cy='36' rx='9' ry='4' ${F(c2, soft)}/><ellipse cx='20' cy='32' rx='9' ry='8' ${F(c1, soft)}/><circle cx='24' cy='17' r='6.5' ${F(c1, soft)}/><polygon points='19,13 20,5 25,10' ${F(c1, soft)}/><polygon points='26,10 31,6 30,13' ${F(c1, soft)}/><rect x='27' y='27' width='3.4' height='13' rx='1.6' ${F(c1, soft)}/><path d='M12 40 C6 40 4 36 6 32' fill='none' stroke='${mode === 'line' ? '#3a3a3a' : c1}' stroke-width='${mode === 'line' ? .8 : 2.6}' stroke-linecap='round'${mode === 'soft' ? ` opacity='.6'` : ''}/><polygon points='44,40 54,40 52,32 46,32' ${F(c3, soft)}/><ellipse cx='49' cy='25' rx='2.8' ry='7' transform='rotate(-18 49 25)' ${F(c2, soft)}/><ellipse cx='49' cy='23' rx='2.8' ry='8' ${F(c2, soft)}/><ellipse cx='50' cy='25' rx='2.8' ry='7' transform='rotate(22 50 25)' ${F(c2, soft)}/><rect x='4' y='40' width='52' height='2.4' ${F(c3, soft)}/>`;
-  const bleed = mode === 'soft' ? `<g opacity='.22' transform='translate(1 .6)'>${scene}</g>` : '';
-  return `<svg viewBox='0 0 60 44' xmlns='http://www.w3.org/2000/svg'><rect width='60' height='44' fill='${tst.bg}'/>${bleed}${scene}</svg>`;
+function tasteThumbHTML(tst) {
+  return `<img src='assets/taste-${tst.id}.png' alt='' style='width:100%;height:100%;object-fit:cover;display:block'>`;
 }
 
 function requestBlock(parent, layer, kind) {
@@ -1019,7 +1003,7 @@ function requestBlock(parent, layer, kind) {
       const b = h('button', 'tasteBtn' + (layer.taste === tst.id ? ' on' : ''));
       b.type = 'button';
       const th = h('span', 'tasteThumb');
-      th.innerHTML = tasteThumbSVG(tst);
+      th.innerHTML = tasteThumbHTML(tst);
       b.appendChild(th);
       b.appendChild(h('span', 'tasteName', state.lang === 'en' ? tst.en : tst.ja));
       b.onclick = () => { layer.taste = tst.id; save(); refresh(); };
